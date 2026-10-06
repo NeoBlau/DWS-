@@ -1,31 +1,16 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Анатомия машин</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="css/style.css">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>How It Works</title>
+<meta name="description" content="Интерактивный 3D-учебник: как устроены Toyota Fortuner, BMW 530i и Airbus A320." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" />
 </head>
 <body>
-<header class="topbar">
-  <a class="brand" href="#home" aria-label="На главную">
-    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="16" cy="16" r="4.5" fill="currentColor"/><path d="M16 3v6M16 23v6M3 16h6M23 16h6" stroke="currentColor" stroke-width="2.5"/></svg>
-    <span>Анатомия&nbsp;машин</span>
-  </a>
-  <nav class="tabs" aria-label="Разделы">
-    <a href="#fortuner" data-tab="fortuner">Fortuner <small>дизель</small></a>
-    <a href="#bmw" data-tab="bmw">530i <small>бензин</small></a>
-    <a href="#a320" data-tab="a320">A320 <small>самолёт</small></a>
-  </nav>
-</header>
-<main id="app"></main>
-<script src="js/insets.js"></script>
-<script src="js/fortuner.js"></script>
-<script src="js/bmw.js"></script>
-<script src="js/a320.js"></script>
-<script src="js/core.js"></script>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
