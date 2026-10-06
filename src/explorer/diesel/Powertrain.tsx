@@ -325,7 +325,8 @@ function Turbo({ s }: { s: EngineSpec }) {
     const open = 0.2 + (S.extra.turboRpm ?? 0.3) * 0.9
     vanes.current.forEach((v) => { v.rotation.x = 0.9 - open * 0.8 })
     const k = S.extra.turboCut ?? 0
-    CUT2.constant = k < 0.01 ? 50 : z + (1 - Math.pow(k, 0.6)) * 0.4
+    // CUT2 faces +z: removes the back half of the turbo so it reads from behind the engine
+    CUT2.constant = k < 0.01 ? 50 : -(z - (1 - Math.pow(k, 0.6)) * 0.4)
   })
   const volT = useMemo(() => revolve('volT', [[-0.03, 0.035], [-0.05, 0.07], [-0.02, 0.1], [0.02, 0.095], [0.035, 0.06], [0.03, 0.035], [-0.03, 0.035]], 48), [])
   const volC = useMemo(() => revolve('volC', [[-0.035, 0.04], [-0.04, 0.085], [-0.01, 0.112], [0.03, 0.1], [0.045, 0.06], [0.06, 0.042], [0.06, 0.032], [-0.035, 0.04]], 48), [])
@@ -551,9 +552,13 @@ function Axle({ s, x, driven, front }: { s: EngineSpec; x: number; driven: boole
   )
 }
 
+/** the tank sits beside the main section plane, so it gets its own plane through its middle */
+const TANKCUT = new THREE.Plane(new THREE.Vector3(0, 0, -1), 50)
+
 function Driveline({ s }: { s: EngineSpec }) {
+  useFrame(() => { TANKCUT.constant = S.cut < 0.02 ? 50 : s.tank.pos[2] + (s.tank.saddle ? 0.3 : 0) + (1 - Math.pow(S.cut, 0.7)) * 0.8 })
   const tcase = useMat({ color: '#a7a093', metal: 0.6, rough: 0.4, casing: true, comp: 'transfer' })
-  const tankM = useMat({ color: '#5b646d', metal: 0.5, rough: 0.45, casing: true, comp: 'tank' })
+  const tankM = useMat({ color: '#5b646d', metal: 0.5, rough: 0.45, casing: true, comp: 'tank', plane: TANKCUT })
   const fuel = useMat({ color: '#ff8a3d', metal: 0, rough: 0.2, opacity: 0.7, emissive: '#ff6a1a', emissiveIntensity: 0.5, keepLit: true, comp: 'tank' })
   const pipe = useMat({ color: '#8a7466', metal: 0.75, rough: 0.45, comp: 'exhaust' })
   const dpfM = useMat({ color: '#c9ccd0', metal: 0.85, rough: 0.3, casing: true, comp: 'dpf' })
@@ -588,9 +593,9 @@ function Driveline({ s }: { s: EngineSpec }) {
       <Explode off={[0, -0.35, 0.2]}>
         {tankParts.map((dz) => (
           <group key={dz} position={[T.pos[0], T.pos[1] - T.size[1] / 2, T.pos[2] + dz]}>
-            <Casing geometry={tankGeo} material={tankM} />
-            <Casing geometry={tankCap} material={tankM} position={[0, -0.012, 0]} />
-            <Casing geometry={tankCap} material={tankM} position={[0, T.size[1], 0]} />
+            <Casing geometry={tankGeo} material={tankM} plane={TANKCUT} />
+            <Casing geometry={tankCap} material={tankM} position={[0, -0.012, 0]} plane={TANKCUT} />
+            <Casing geometry={tankCap} material={tankM} position={[0, T.size[1], 0]} plane={TANKCUT} />
             <mesh material={fuel} position={[0, T.size[1] * 0.32, 0]}><boxGeometry args={[T.size[0] - 0.03, T.size[1] * 0.6, (T.saddle ? T.size[2] * 0.42 : T.size[2]) - 0.03]} /></mesh>
           </group>
         ))}

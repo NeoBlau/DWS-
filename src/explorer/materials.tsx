@@ -14,7 +14,7 @@ export const PLAY = { k: 1 } // 0 when paused, playback speed otherwise (mechani
 export const CUT = new THREE.Plane(new THREE.Vector3(0, 0, -1), 50)
 export const CUTS = [CUT]
 /** secondary section plane for parts that sit off the main plane (e.g. the turbocharger) */
-export const CUT2 = new THREE.Plane(new THREE.Vector3(0, 0, -1), 50)
+export const CUT2 = new THREE.Plane(new THREE.Vector3(0, 0, 1), 50)
 
 /* ------------------------------------------------------------------ material registry */
 interface Entry { m: THREE.MeshPhysicalMaterial; base: THREE.Color; baseEm: THREE.Color; baseEmI: number; casing: boolean; comp?: string; keepLit?: boolean; noXray?: boolean }
@@ -90,7 +90,7 @@ export function Casing({ geometry, material, cap = '#e2793a', position, rotation
     const base = { depthWrite: false, depthTest: false, colorWrite: false, stencilWrite: true, stencilFunc: THREE.AlwaysStencilFunc, clippingPlanes: [plane] }
     const b = new THREE.MeshBasicMaterial({ ...base, side: THREE.BackSide, stencilFail: THREE.IncrementWrapStencilOp, stencilZFail: THREE.IncrementWrapStencilOp, stencilZPass: THREE.IncrementWrapStencilOp })
     const f = new THREE.MeshBasicMaterial({ ...base, side: THREE.FrontSide, stencilFail: THREE.DecrementWrapStencilOp, stencilZFail: THREE.DecrementWrapStencilOp, stencilZPass: THREE.DecrementWrapStencilOp })
-    const c = new THREE.MeshStandardMaterial({ color: cap, metalness: 0.2, roughness: 0.55, emissive: cap, emissiveIntensity: 0.18, stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp })
+    const c = new THREE.MeshStandardMaterial({ color: cap, side: THREE.DoubleSide, metalness: 0.2, roughness: 0.55, emissive: cap, emissiveIntensity: 0.18, stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp })
     return [b, f, c]
   }, [cap, plane])
   const capRef = useRef<THREE.Mesh>(null!)
@@ -104,7 +104,7 @@ export function Casing({ geometry, material, cap = '#e2793a', position, rotation
     // place the cap on the section plane in this group's local space
     grp.current.updateWorldMatrix(true, false)
     inv.copy(grp.current.matrixWorld).invert()
-    p.set(0, 0, plane.constant).applyMatrix4(inv)
+    plane.coplanarPoint(p).applyMatrix4(inv)
     capRef.current.position.copy(p)
     capRef.current.quaternion.copy(grp.current.getWorldQuaternion(new THREE.Quaternion()).invert())
   })

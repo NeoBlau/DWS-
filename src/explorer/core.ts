@@ -54,8 +54,13 @@ export interface LabelDef {
 /* ------------------------------------------------------------------ playback store */
 export type ManualMode = 'auto' | 'walk' | 'cutaway' | 'xray' | 'flow' | 'exploded'
 /** timeline clock: mutated every frame, deliberately outside React state */
-export const CLOCK = { t: 0 }
-export const seek = (t: number) => { CLOCK.t = t }
+/** snap: frames during which the director jumps straight to the target state (used on big jumps and by tests) */
+export const CLOCK = { t: 0, snap: 0, boost: 0 }
+export const seek = (t: number, snap = false) => {
+  if (Math.abs(t - CLOCK.t) > 2.5) CLOCK.boost = 1.2
+  CLOCK.t = t
+  if (snap) CLOCK.snap = 2
+}
 
 interface ExpStore {
   track: string

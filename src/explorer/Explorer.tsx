@@ -50,8 +50,14 @@ function Director({ def, cutOpen, controls }: { def: ExplorerDef; cutOpen: numbe
       if (CLOCK.t >= track.duration) { CLOCK.t = track.duration; e.set({ playing: false }) }
     }
     const s = withMode(track.state(CLOCK.t), e.mode as ManualMode, e.flowOff)
-    const k = 1 - Math.exp(-dt * 3.2)
-    S.cut = lerp(S.cut, s.cut, k); S.xray = lerp(S.xray, s.xray, k); S.explode = lerp(S.explode, s.explode, 1 - Math.exp(-dt * 2.4)); S.dim = lerp(S.dim, s.dim, k)
+    const snap = CLOCK.snap > 0
+    if (snap) CLOCK.snap--
+    // big jumps on the timeline travel faster so the camera does not lag behind the story
+    const boost = CLOCK.boost > 0 ? 2.4 : 1
+    CLOCK.boost = Math.max(0, CLOCK.boost - dt)
+    const K = (rate: number) => (snap ? 1 : 1 - Math.exp(-dt * rate * boost))
+    const k = K(3.2)
+    S.cut = lerp(S.cut, s.cut, k); S.xray = lerp(S.xray, s.xray, k); S.explode = lerp(S.explode, s.explode, K(2.4)); S.dim = lerp(S.dim, s.dim, k)
     S.rpm = lerp(S.rpm, s.rpm * (0.35 + e.throttle * 1.3), 1 - Math.exp(-dt * 1.6))
     const ids = new Set([...Object.keys(S.flows), ...Object.keys(s.flows)])
     ids.forEach((id) => { const f = id as keyof typeof S.flows; S.flows[f] = lerp(S.flows[f] ?? 0, s.flows[f] ?? 0, k) })
@@ -69,7 +75,7 @@ function Director({ def, cutOpen, controls }: { def: ExplorerDef; cutOpen: numbe
     if (e.follow && controls.current) {
       const p = track.camera(CLOCK.t)
       pos.set(...p.pos); tgt.set(...p.target)
-      const kc = 1 - Math.exp(-dt * 2.6)
+      const kc = K(2.6)
       camera.position.lerp(pos, kc)
       controls.current.target.lerp(tgt, kc)
       controls.current.update()
@@ -259,6 +265,7 @@ export function Explorer({ def, cutOpen, controlsPanel, children, cam }: {
         </div>
       </div>
       <aside className="xp-panel glass">
+        {controlsPanel}
         <span className="eyebrow">{t(UI.scenario)}</span>
         <div className="xp-tracks">
           {def.tracks.map((k) => <button key={k.id} className={`btn sm ${k.id === track.id ? 'on' : ''}`} onClick={() => { seek(0); st.set({ track: k.id, playing: true, follow: true, mode: 'auto' }) }}>{t(k.title)}</button>)}
@@ -272,7 +279,6 @@ export function Explorer({ def, cutOpen, controlsPanel, children, cam }: {
             return <button key={f.id} className={`btn sm ${off ? 'off' : ''}`} style={{ ['--c' as string]: f.color }} onClick={() => st.set({ flowOff: off ? st.flowOff.filter((x) => x !== f.id) : [...st.flowOff, f.id] })}><i className="dot" />{t(f.label)}</button>
           })}
         </div>
-        {controlsPanel}
         <p className="xp-note">{t(def.note)}</p>
       </aside>
       <Caption track={track} />

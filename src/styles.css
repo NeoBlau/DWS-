@@ -349,3 +349,6 @@ button { font: inherit; color: inherit; }
   .xp-caption { bottom: calc(150px + 30vh + 8px); left: 12px; right: 12px; max-width: none; font-size: 13px; }
   .xl span { display: none; }
 }
+.xp-panel .btn.primary { min-height: 40px; font-size: 12px; letter-spacing: 0.12em; flex-shrink: 0; }
+.xp-panel::-webkit-scrollbar { width: 6px; }
+.xp-panel::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 3px; }
