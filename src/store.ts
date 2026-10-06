@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import type { FlowKind, LabId, LearnStep, SceneAction, Shot, SystemId, VehicleId } from './data/types'
 
-export type Screen = 'loading' | 'landing' | 'machine' | 'final'
+export type Screen = 'loading' | 'landing' | 'machine' | 'final' | 'explorer'
+export type ExplorerId = 'diesel' | 'petrol' | 'jet' | 'flight'
 export type Level = 'beginner' | 'engineer'
 export type Tray = null | 'flows' | 'walk' | 'exploded' | 'drive' | 'controls' | 'flight'
 export type FlightPhase = 'gate' | 'pushback' | 'taxi' | 'takeoff' | 'climb' | 'cruise' | 'descent' | 'landing'
@@ -55,6 +56,7 @@ function saveUnderstood(u: Record<VehicleId, string[]>) {
 
 export interface AppState {
   screen: Screen
+  explorer: ExplorerId | null
   vehicleId: VehicleId | null
   // display modes
   cutaway: boolean
@@ -96,6 +98,7 @@ export interface AppState {
 
 export const useApp = create<AppState>((set, get) => ({
   screen: 'loading',
+  explorer: null,
   vehicleId: null,
   cutaway: false,
   xray: false,

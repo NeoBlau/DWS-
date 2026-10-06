@@ -4,9 +4,10 @@ import App from './App'
 import './styles.css'
 import { useApp } from './store'
 import * as actions from './utils/actions'
+import * as expCore from './explorer/core'
 
 // test hook for automated UI checks (dev server only)
-if (import.meta.env.DEV) Object.assign(window, { __app: useApp, __act: actions })
+if (import.meta.env.DEV) Object.assign(window, { __app: useApp, __act: actions, __exp: expCore })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
