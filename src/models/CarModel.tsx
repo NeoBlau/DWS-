@@ -699,7 +699,7 @@ function Cabin({ L, third }: { L: CarLayout; third: boolean }) {
       <Part kind="screen" layer="interior" system="cabin" comp="infotainment" emissive="#3b82d6" emissiveIntensity={0.9}>
         <mesh geometry={rbox(0.02, 0.17, 0.3, 0.008)} position={[L.dash - 0.2, L.seatY + 0.55, 0]} rotation={[0, 0, 0.25]} />
       </Part>
-      <Part kind="screen" layer="interior" system="cabin" comp="cluster" emissive="#7cc8ff" emissiveIntensity={0.7}>
+      <Part kind="screen" layer="interior" system="cabin" comp="cluster" emissive="#3a6f9e" emissiveIntensity={0.28}>
         <mesh geometry={rbox(0.02, 0.12, 0.3, 0.008)} position={[L.dash - 0.18, L.seatY + 0.5, 0.42]} rotation={[0, 0, 0.2]} />
       </Part>
       <Part kind="dark" layer="interior" system="steering" comp={['steeringWheel', 'airbag']}>
@@ -750,13 +750,14 @@ function Cabin({ L, third }: { L: CarLayout; third: boolean }) {
 }
 
 /* ------------------------------------------------------------------ root */
-export function CarModel({ def, showcase = false }: { def: VehicleDef; showcase?: boolean }) {
+export function CarModel({ def, showcase = false, drive }: { def: VehicleDef; showcase?: boolean; drive?: (rt: Runtime, dt: number) => void }) {
   const L = def.layout as CarLayout
   const rt = useMemo<Runtime>(() => newRuntime(), [])
   if (!showcase) liveRuntime.current = rt
   const diesel = !L.petrol
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05)
+    if (drive) { drive(rt, dt); return } // driven by an external physics model (driving simulator)
     const sim = getApp().sim
     if (showcase) { rt.rpm = 800; rt.crank += dt * 2.2; rt.turbo += dt * 6; rt.fan += dt * 3; return }
     const idle = diesel ? 750 : 700, red = diesel ? 4200 : 6500

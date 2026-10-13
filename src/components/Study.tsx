@@ -16,6 +16,7 @@ type Go =
   | { kind: 'explorer'; id: Exclude<ExplorerId, 'flight'>; track: string; t?: number; mode?: ManualMode }
   | { kind: 'flight'; start: Start; cam?: CamMode; ac?: 'a320' | 'strizh'; design?: boolean; patch?: (s: Sim) => void }
   | { kind: 'lab'; vehicle: VehicleId; lab: LabId }
+  | { kind: 'drive' }
 interface Topic { id: string; group: string; title: Txt; text: Txt; tags: Txt; go: Go }
 
 const G = {
@@ -47,6 +48,7 @@ const TOPICS: Topic[] = [
   { id: 'fbw', group: 'plane', title: T('Fly-by-wire и защиты', 'Fly-by-wire and protections'), text: T('В полёте попробуйте резко взять на себя или крен 70° — защиты не дадут. В прямом законе — дадут.', 'In flight, pull hard or bank 70° — protections stop you. In direct law they do not.'), tags: T('нормальный / прямой закон', 'normal / direct law'), go: { kind: 'flight', start: 'cruise', cam: 'chase' } },
   { id: 'gear', group: 'plane', title: T('Шасси и посадка', 'Landing gear and touchdown'), text: T('Заход на посадку: выпуск шасси, амортизаторы, интерцепторы и реверс при касании.', 'Approach: gear down, shock struts, spoilers and reverse at touchdown.'), tags: T('шасси · реверс', 'gear · reverse'), go: { kind: 'flight', start: 'approach', cam: 'side' } },
   { id: 'strizh', group: 'plane', title: T('Проект «Стриж-180»', 'The Strizh-180 design'), text: T('Собственный самолёт: подкосное крыло, открытые вентиляторы и расчёт против A320.', 'Our own aircraft: truss-braced wing, open fans and the numbers against the A320.'), tags: T('проект', 'design'), go: { kind: 'flight', start: 'runway', ac: 'strizh', cam: 'chase', design: true } },
+  { id: 'drive', group: 'car', title: T('За рулём: шины, ABS, ESC', 'At the wheel: tyres, ABS, ESC'), text: T('Сами разгоняйтесь, тормозите и входите в повороты на сухом, мокром и льду — кольца под колёсами показывают сцепление каждой шины.', 'Accelerate, brake and corner yourself on dry, wet and ice — rings under the wheels show each tyre’s grip.'), tags: T('автосимулятор', 'driving sim'), go: { kind: 'drive' } },
   { id: 'abs', group: 'car', title: T('Тормоза и ABS', 'Brakes and ABS'), text: T('Колодки, диск, суппорт — и как ABS не даёт колесу заблокироваться.', 'Pads, disc, caliper — and how ABS keeps the wheel from locking.'), tags: T('тормоза', 'brakes'), go: { kind: 'lab', vehicle: 'bmw', lab: 'brakes' } },
   { id: 'trans', group: 'car', title: T('Трансмиссия 4×4', '4×4 driveline'), text: T('Раздаточная коробка, дифференциалы и блокировки.', 'Transfer case, differentials and locks.'), tags: T('4×4', '4×4'), go: { kind: 'lab', vehicle: 'fortuner', lab: 'transmission' } },
 ]
@@ -54,6 +56,7 @@ const TOPICS: Topic[] = [
 function open(go: Go) {
   if (go.kind === 'explorer') { PENDING.start = { track: go.track, t: go.t ?? 0, mode: go.mode, playing: true }; getApp().set({ screen: 'explorer', explorer: go.id }) }
   else if (go.kind === 'flight') { PENDING_FLIGHT.v = { start: go.start, cam: go.cam, ac: go.ac, design: go.design, patch: go.patch }; getApp().set({ screen: 'explorer', explorer: 'flight' }) }
+  else if (go.kind === 'drive') getApp().set({ screen: 'explorer', explorer: 'drive' })
   else openVehicle(go.vehicle, () => getApp().set({ lab: { id: go.lab } }))
 }
 

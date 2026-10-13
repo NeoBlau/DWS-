@@ -485,3 +485,22 @@ button { font: inherit; color: inherit; }
 .study-card b { font-size: 15.5px; }
 .study-card p { margin: 0; font-size: 13px; line-height: 1.5; color: #c9d2dd; }
 .study-card small { margin-top: auto; font: 500 10.5px var(--f-mono); letter-spacing: 0.1em; color: var(--accent); text-transform: uppercase; }
+/* ---- driving sim ---- */
+.ds-panel { position: absolute; right: 16px; top: 64px; width: 330px; padding: 12px; display: flex; flex-direction: column; gap: 9px; z-index: 9; max-height: calc(100vh - 260px); overflow-y: auto; }
+.ds-panel .eyebrow { align-self: center; margin-right: 4px; }
+.ds-cluster { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 14px; z-index: 9; }
+.ds-gauge { width: 150px; height: auto; }
+.ds-gm { width: 96px; height: auto; }
+.ds-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 96px; font-family: var(--f-mono); }
+.ds-mid small { font-size: 9.5px; color: var(--muted); letter-spacing: 0.12em; }
+.ds-gear { font-size: 30px; color: #f2f4f6; }
+.ds-lamps { display: flex; gap: 4px; }
+.ds-lamp { font-size: 9px; padding: 2px 5px; border-radius: 4px; border: 1px solid #3b4350; color: #9aa4b2; }
+.ds-lamp.act { background: #ffb02e; color: #111; border-color: #ffb02e; }
+.ds-lamp.off { color: #ffb02e; border-color: #7a5410; }
+.ds-boost { width: 80px; height: 5px; border-radius: 3px; background: #1b2029; overflow: hidden; }
+.ds-boost i { display: block; height: 100%; background: #5cd8ff; }
+.ds-times { margin-top: 10px; display: flex; gap: 16px; font: 500 12px var(--f-mono); color: var(--muted); }
+.ds-times b { color: #7cf0a6; }
+@media (max-width: 1100px) { .ds-cluster { transform: translateX(-50%) scale(0.8); transform-origin: bottom center; } }
+@media (max-width: 760px) { .ds-panel { top: auto; bottom: 170px; left: 12px; right: 12px; width: auto; max-height: 150px; } .ds-gm { display: none; } }

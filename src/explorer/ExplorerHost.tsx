@@ -3,6 +3,7 @@ import { useApp } from '../store'
 import { EngineExplorer } from './diesel/EngineExplorer'
 
 const JetExplorer = lazy(() => import('./jet/JetExplorer').then((m) => ({ default: m.JetExplorer })))
+const DriveSim = lazy(() => import('./car/DriveSim').then((m) => ({ default: m.DriveSim })))
 const FlightSim = lazy(() => import('./flight/FlightSim').then((m) => ({ default: m.FlightSim })))
 
 export function ExplorerHost() {
@@ -13,6 +14,7 @@ export function ExplorerHost() {
       {id === 'petrol' && <EngineExplorer key="p" petrol />}
       {id === 'jet' && <JetExplorer />}
       {id === 'flight' && <FlightSim />}
+      {id === 'drive' && <DriveSim />}
     </Suspense>
   )
 }
