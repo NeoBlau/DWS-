@@ -7,6 +7,8 @@ import type { OrbitControls as OrbitImpl } from 'three-stdlib'
 import { useApp } from '../../store'
 import { useT, useLang, T, type Txt } from '../i18n'
 import { A320 } from './Aircraft'
+import { StrizhModel } from './Strizh'
+import { DesignPanel } from './Design'
 import { EYE, LOOK } from './Cockpit'
 import { World } from './World'
 import { Pfd, Ecam, ForceLegend, useSnap, type Snap } from './Hud'
@@ -46,9 +48,10 @@ function SimLoop() {
 
 /* ------------------------------------------------------------------ aircraft placed at the floating origin */
 function AircraftRoot() {
+  const ac = useFlight((s) => s.ac)
   const g = useRef<THREE.Group>(null!)
   useFrame(() => { const s = FS.sim; g.current.position.set(0, s.pos.y, 0); g.current.quaternion.copy(s.quat) })
-  return <group ref={g}><A320 /></group>
+  return <group ref={g}>{ac === 'strizh' ? <StrizhModel /> : <A320 />}</group>
 }
 
 /* ------------------------------------------------------------------ cameras */
@@ -85,8 +88,9 @@ function CameraRig({ orbit }: { orbit: React.MutableRefObject<OrbitImpl | null> 
       camera.quaternion.copy(_q)
       fov = 68
     } else if (mode === 'wing') {
-      bodyPoint([-0.6, 4.25, -2.15], camera.position)
-      bodyPoint([-4.2, 2.6, -10.5], look)
+      const hi = s.spec.id === 'strizh'
+      bodyPoint(hi ? [-0.6, 3.9, -2.15] : [-0.6, 4.25, -2.15], camera.position)
+      bodyPoint(hi ? [-3.0, 5.6, -12] : [-4.2, 2.6, -10.5], look)
       camera.up.set(0, 1, 0).applyQuaternion(s.quat)
       camera.lookAt(look)
       fov = 60
@@ -430,13 +434,19 @@ export function FlightSim() {
       </Canvas>
       <header className="fs-top">
         <button className="btn sm" onClick={() => useApp.getState().set({ screen: 'landing' })}>← {t(T('Назад', 'Back'))}</button>
-        <div className="fs-title"><span className="eyebrow">Airbus A320 · {t(T('мини-полёт', 'mini flight'))}</span><h1>{t(T('Управляйте сами', 'You fly it'))}</h1></div>
+        <div className="fs-title"><span className="eyebrow">{ui.ac === 'strizh' ? t(T('Стриж-180 · собственный проект', 'Strizh-180 · own design')) : 'Airbus A320'} · {t(T('полёт', 'flight'))}</span><h1>{t(T('Управляйте сами', 'You fly it'))}</h1></div>
         <div className="fs-seg">
           {starts.map(([k, l]) => <button key={k} className={`btn sm ${ui.start === k ? 'on' : ''}`} onClick={() => resetSim(k)}>{t(l)}</button>)}
           <button className={`btn sm ${ui.paused ? 'on' : ''}`} onClick={() => ui.set({ paused: !ui.paused })}>{ui.paused ? '▶' : '❚❚'} {t(T('Пауза', 'Pause'))}</button>
         </div>
+        <div className="fs-seg">
+          <button className={`btn sm ${ui.ac === 'a320' ? 'on' : ''}`} onClick={() => { ui.set({ ac: 'a320' }); resetSim(ui.start) }}>A320</button>
+          <button className={`btn sm ${ui.ac === 'strizh' ? 'on' : ''}`} onClick={() => { ui.set({ ac: 'strizh' }); resetSim(ui.start) }}>{t(T('Стриж-180', 'Strizh-180'))}</button>
+          <button className="btn sm" onClick={() => ui.set({ design: true })}>{t(T('Проект ⓘ', 'Design ⓘ'))}</button>
+        </div>
         <div className="seg xp-lang"><button className={lang === 'ru' ? 'on' : ''} onClick={() => setLang('ru')}>RU</button><button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button></div>
       </header>
+      {ui.design && <DesignPanel onClose={() => ui.set({ design: false })} />}
       <NarrationPanel />
       <GuidePanel />
       <Toasts />

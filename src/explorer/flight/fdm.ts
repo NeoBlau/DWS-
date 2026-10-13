@@ -36,6 +36,9 @@ export interface Spec {
   S: number; b: number; c: number; iw: number; CLA: number; CD0: number; CDgear: number; e: number
   I: THREE.Vector3 // body x (roll), y (yaw), z (pitch) at refMass
   tMax: number; eng: THREE.Vector3[]; ffScale: number; revFrac: number
+  tsfc0: number // thrust-specific fuel consumption at rest, kg per N per hour (rises with Mach)
+  idleFF: number // kg/h per engine at ground idle
+  seats: number
   cgLayout: THREE.Vector3 // CG in the drawing frame (ground at y = 0 with static struts)
   confs: Conf[]
   vmo: number; mmo: number; vle: number; vlo: number; nzMax: number; nzMaxFlaps: number
@@ -50,7 +53,7 @@ export const A320: Spec = {
   id: 'a320', oew: 42600, payload: 13500, fuelMax: 18700, fuelStart: 8000, refMass: 64000,
   S: 122.6, b: 34.1, c: 4.19, iw: 2 * DEG, CLA: 5.6, CD0: 0.0215, CDgear: 0.018, e: 0.78,
   I: V3(1.35e6, 4.3e6, 3.1e6),
-  tMax: 120000, eng: [V3(2.5, -1.2, -5.75), V3(2.5, -1.2, 5.75)], ffScale: 1, revFrac: 0.32,
+  tMax: 120000, eng: [V3(2.5, -1.2, -5.75), V3(2.5, -1.2, 5.75)], ffScale: 1, revFrac: 0.32, tsfc0: 0.0306, idleFF: 280, seats: 180,
   cgLayout: V3(-0.63, 3.0, 0),
   confs: [
     { id: '0', slat: 0, flap: 0, cl0: 0.2, as: 13, cd: 0, cm: 0, vfe: 350 },
@@ -72,6 +75,39 @@ export const A320: Spec = {
   Cm0: 0.05, CmA: -1.35, CmE: 1.2, CmT: 2.5, CmQ: -28,
   Cla: 0.11, ClP: -0.46, Cnr: -0.2, Cnb: 0.13, Cnd: 0.09,
 }
+/**
+ * «Стриж-180» — a clean-sheet 180-seat design: high truss-braced wing of aspect ratio ≈ 19 with folding tips,
+ * natural-laminar-flow airfoil, two open-fan engines (bypass ≈ 60) on the wing, thermoplastic CFRP structure,
+ * electric flight-control actuators, Krueger leading edges and double-slotted flaps, T-tail.
+ */
+export const STRIZH: Spec = {
+  id: 'strizh', oew: 37800, payload: 13500, fuelMax: 15000, fuelStart: 6500, refMass: 58000,
+  S: 118, b: 47.3, c: 2.55, iw: 2.5 * DEG, CLA: 5.9, CD0: 0.0186, CDgear: 0.016, e: 0.86,
+  I: V3(2.4e6, 4.6e6, 2.9e6),
+  tMax: 100000, eng: [V3(3.03, 1.85, -6.8), V3(3.03, 1.85, 6.8)], ffScale: 1, revFrac: 0.3, tsfc0: 0.0245, idleFF: 220, seats: 180,
+  cgLayout: V3(-0.63, 3.0, 0),
+  confs: [
+    { id: '0', slat: 0, flap: 0, cl0: 0.22, as: 13, cd: 0, cm: 0, vfe: 340 },
+    { id: '1', slat: 25, flap: 0, cl0: 0.4, as: 18, cd: 0.004, cm: -0.008, vfe: 230 },
+    { id: '1+F', slat: 25, flap: 12, cl0: 0.7, as: 17, cd: 0.011, cm: -0.035, vfe: 215 },
+    { id: '2', slat: 25, flap: 20, cl0: 0.92, as: 17, cd: 0.02, cm: -0.05, vfe: 200 },
+    { id: '3', slat: 25, flap: 28, cl0: 1.08, as: 16.5, cd: 0.03, cm: -0.065, vfe: 190 },
+    { id: 'FULL', slat: 25, flap: 40, cl0: 1.3, as: 18, cd: 0.06, cm: -0.1, vfe: 180 },
+  ],
+  vmo: 340, mmo: 0.82, vle: 270, vlo: 250, nzMax: 2.5, nzMaxFlaps: 2.0,
+  noseGear: V3(11.0, 0, 0), mainGear: V3(-1.45, 0, 2.3),
+  hard: [
+    { id: 'tail', kind: 'tail', p: V3(-13.0, 2.35, 0) },
+    { id: 'engL', kind: 'engine', p: V3(2.4, 2.85, -6.8) }, { id: 'engR', kind: 'engine', p: V3(2.4, 2.85, 6.8) },
+    { id: 'tipL', kind: 'wingtip', p: V3(-5.0, 4.6, -23.6) }, { id: 'tipR', kind: 'wingtip', p: V3(-5.0, 4.6, 23.6) },
+    { id: 'bellyF', kind: 'belly', p: V3(9.0, 1.4, 0) }, { id: 'bellyA', kind: 'belly', p: V3(-3.0, 1.33, 0) },
+  ],
+  wingY: 2.2,
+  Cm0: 0.03, CmA: -1.5, CmE: 1.3, CmT: 2.7, CmQ: -30,
+  Cla: 0.09, ClP: -0.6, Cnr: -0.25, Cnb: 0.15, Cnd: 0.1,
+}
+export const SPECS = { a320: A320, strizh: STRIZH }
+
 /** kept for components written against the A320 only */
 export const AC = { ...A320, mass: A320.refMass }
 export const CONFS = A320.confs
@@ -618,7 +654,8 @@ export function step(s: Sim, dt = H) {
     const egtT = lit ? 420 + 430 * fT + (e.state === 'starting' ? 260 * Math.exp(-((s.t - e.tStart - 9) ** 2) / 6) : 0) : 25 + Math.max(0, e.egt - 25) * 0.995
     e.egt += (egtT - e.egt) * Math.min(1, dt * 0.8)
     d.egt[i] = e.egt
-    d.ff[i] = lit ? (300 + 2700 * Math.pow(fT, 1.4)) * sp.ffScale * Math.max(0.55, atm.sigma ** 0.5) : 0
+    // fuel flow follows the thrust actually produced: ṁ = T · TSFC, with TSFC rising with Mach
+    d.ff[i] = lit ? Math.max(sp.idleFF * Math.max(0.6, atm.sigma), Math.abs(T) * sp.tsfc0 * (1 + 0.85 * d.mach)) * sp.ffScale : 0
     _tmp.set(T, 0, 0)
     _f.add(_tmp)
     _m.add(_tmp2.copy(sp.eng[i]).cross(_tmp))

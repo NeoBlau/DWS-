@@ -22,7 +22,7 @@ function mat(o: THREE.MeshPhysicalMaterialParameters & { finish?: Finish }) {
   applyFinish(m, finish ?? 'none')
   return m
 }
-function useMats() {
+export function useMats() {
   return useMemo(() => ({
     paint: mat({ color: '#f1f0ec', vertexColors: true, roughness: 0.42, metalness: 0, clearcoat: 0.55, clearcoatRoughness: 0.12, envMapIntensity: 0.7, finish: 'paint' }),
     white: mat({ color: '#eeeeea', roughness: 0.42, metalness: 0, clearcoat: 0.55, clearcoatRoughness: 0.12, envMapIntensity: 0.7, finish: 'paint' }),
@@ -42,10 +42,10 @@ function useMats() {
     plug: mat({ color: '#8a7b6c', roughness: 0.5, metalness: 0.8, finish: 'cast' }),
   }), [])
 }
-type Mats = ReturnType<typeof useMats>
+export type Mats = ReturnType<typeof useMats>
 
 /* ------------------------------------------------------------------ hinged surface */
-function Hinged({ id, sections, c0, c1, hingeC, material, drive, vertical }: {
+export function Hinged({ id, sections, c0, c1, hingeC, material, drive, vertical }: {
   id: string; sections: Section[]; c0: number; c1: number; hingeC: number; material: THREE.Material
   /** returns [angle rad (+ = trailing edge down / right), translate x, translate y] */
   drive: () => [number, number, number]; vertical?: boolean
@@ -70,13 +70,13 @@ function Hinged({ id, sections, c0, c1, hingeC, material, drive, vertical }: {
 }
 
 /* ------------------------------------------------------------------ fuselage with a simple generic livery */
-function Fuselage({ m }: { m: Mats }) {
+export function Fuselage({ m, stripe: stripeHex = '#1b4a8a', stripe2Hex = '#5aa0e6' }: { m: Mats; stripe?: string; stripe2Hex?: string }) {
   const geo = useMemo(() => {
     const xs: number[] = []
     for (let i = 0; i <= 220; i++) { const u = i / 220; xs.push(AX.tail + (AX.nose - AX.tail) * (1 - Math.cos(u * Math.PI)) / 2) }
-    const g = fuselage('a320-fs', xs, fusR, fusY, 72).clone()
+    const g = fuselage('a320-fs', xs, fusR, fusY, 72).clone() // livery depends on the props
     const pos = g.attributes.position, col = new Float32Array(pos.count * 3)
-    const white = new THREE.Color('#f6f7f9'), belly = new THREE.Color('#bfc5cc'), stripe = new THREE.Color('#1b4a8a'), stripe2 = new THREE.Color('#5aa0e6')
+    const white = new THREE.Color('#f6f7f9'), belly = new THREE.Color('#bfc5cc'), stripe = new THREE.Color(stripeHex), stripe2 = new THREE.Color(stripe2Hex)
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i)
       const r = Math.max(0.001, fusR(x)), cy = (y - fusY(x)) / r // +1 top … −1 bottom
@@ -89,7 +89,7 @@ function Fuselage({ m }: { m: Mats }) {
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3))
     return g
-  }, [])
+  }, [stripeHex, stripe2Hex])
   // windshield / cockpit side windows: patches lying on the fuselage surface (outside view), plus wipers
   const panes = useMemo(() => PANES.map(([a, b, c, d]) => surfacePatch(a, b, Math.min(c, d), Math.max(c, d), 0.012)), [])
   // cabin window row
@@ -120,8 +120,8 @@ function Fuselage({ m }: { m: Mats }) {
 }
 
 /* ------------------------------------------------------------------ wing (built for +z, mirrored for −z) */
-const flapDeg = () => confAt(FS.sim.srf.conf).flap
-const slatDeg = () => confAt(FS.sim.srf.conf).slat
+export const flapDeg = () => confAt(FS.sim.srf.conf, FS.sim.spec.confs).flap
+export const slatDeg = () => confAt(FS.sim.srf.conf, FS.sim.spec.confs).slat
 function Wing({ side, m }: { side: 1 | -1; m: Mats }) {
   const k = side === 1 ? 'R' : 'L'
   const spl = () => (side === 1 ? FS.sim.srf.splR : FS.sim.srf.splL)
@@ -214,8 +214,8 @@ function Engine({ m }: { m: Mats }) {
 }
 
 /* ------------------------------------------------------------------ landing gear */
-const strutExt = (i: number) => (FS.sim.d.struts?.[i] ?? STATIC_STROKE * 0.6) - STATIC_STROKE * 0.6
-function Wheel({ r, w, m, idx }: { r: number; w: number; m: Mats; idx: number }) {
+export const strutExt = (i: number) => (FS.sim.d.struts?.[i] ?? STATIC_STROKE * 0.6) - STATIC_STROKE * 0.6
+export function Wheel({ r, w, m, idx }: { r: number; w: number; m: Mats; idx: number }) {
   const g = useRef<THREE.Group>(null!)
   useFrame(() => { g.current.rotation.z = -FS.wheelRot[idx] })
   return (
@@ -250,7 +250,7 @@ function MainGear({ m, side }: { m: Mats; side: 1 | -1 }) {
     </group>
   )
 }
-function NoseGear({ m }: { m: Mats }) {
+export function NoseGear({ m }: { m: Mats }) {
   const pivot = useRef<THREE.Group>(null!), lower = useRef<THREE.Group>(null!), steer = useRef<THREE.Group>(null!)
   useFrame(() => {
     const s = FS.sim
@@ -276,14 +276,14 @@ function NoseGear({ m }: { m: Mats }) {
 }
 
 /* ------------------------------------------------------------------ lights */
-function Glow({ color, size, position, blink }: { color: string; size: number; position: Vec3; blink?: (t: number) => number }) {
+export function Glow({ color, size, position, blink }: { color: string; size: number; position: Vec3; blink?: (t: number) => number }) {
   const m = useMemo(() => new THREE.SpriteMaterial({ map: glowSprite(), color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), [color])
   const s = useRef<THREE.Sprite>(null!)
   useFrame((st) => { const k = blink ? blink(st.clock.elapsedTime) : 1; s.current.visible = k > 0.01; s.current.material.opacity = k })
   return <sprite ref={s} material={m} position={position} scale={size} />
 }
-const strobe = (t: number) => { const f = t % 1.1; return f < 0.05 || (f > 0.12 && f < 0.17) ? 1 : 0 }
-const beacon = (t: number) => (t % 1.2 < 0.12 ? 1 : 0)
+export const strobe = (t: number) => { const f = t % 1.1; return f < 0.05 || (f > 0.12 && f < 0.17) ? 1 : 0 }
+export const beacon = (t: number) => (t % 1.2 < 0.12 ? 1 : 0)
 function WingLights({ side }: { side: 1 | -1; k: string }) {
   // side 1 is the right wing (+z): green; left: red
   const ll = useRef<THREE.Group>(null!)
@@ -319,7 +319,7 @@ function Arrow({ color, get }: { color: string; get: () => { dir: THREE.Vector3;
     </group>
   )
 }
-function Forces() {
+export function Forces() {
   const on = useFlight((s) => s.forces && s.cam !== 'cockpit' && s.cam !== 'wing')
   const W = AC.mass * G
   const sc = 12 / W // 1 g = 12 m
@@ -336,7 +336,7 @@ function Forces() {
   )
 }
 
-function CockpitIfInside() {
+export function CockpitIfInside() {
   const inside = useFlight((s) => s.cam === 'cockpit')
   return inside ? <Cockpit /> : null
 }

@@ -103,11 +103,17 @@ function Ground() {
   useFrame(() => {
     tex.offset.set(FS.sim.pos.x / TILE, -FS.sim.pos.z / TILE)
   })
-  return (
-    <mesh rotation-x={-Math.PI / 2} position={[0, -0.02, 0]} receiveShadow material={mat}>
-      <planeGeometry args={[SIZE, SIZE]} />
-    </mesh>
-  )
+  // concentric rings: small triangles near the aircraft keep depth precise, big ones far away keep the count low
+  const geo = useMemo(() => {
+    const radii = [0, 25, 60, 120, 250, 500, 1000, 2000, 4000, 8000, 16000, 32000, 60000, SIZE / 2]
+    const A = 72, pos: number[] = [], uv: number[] = [], idx: number[] = []
+    radii.forEach((r) => { for (let j = 0; j <= A; j++) { const a = (j / A) * Math.PI * 2, x = Math.cos(a) * r, z = Math.sin(a) * r; pos.push(x, 0, z); uv.push(x / SIZE + 0.5, -z / SIZE + 0.5) } })
+    for (let i = 0; i < radii.length - 1; i++) for (let j = 0; j < A; j++) { const p = i * (A + 1) + j, q = p + A + 1; idx.push(p, p + 1, q, p + 1, q + 1, q) }
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals()
+    return g
+  }, [])
+  return <mesh geometry={geo} position={[0, -0.12, 0]} receiveShadow material={mat} />
 }
 
 /* ------------------------------------------------------------------ runway with markings, lights, PAPI */
@@ -138,7 +144,7 @@ function Runway({ x0, approachLights }: { x0: number; approachLights?: boolean }
   const quad = useMemo(() => { const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2); return g }, [])
   const marks = useMemo(() => {
     const L: [number, number, number, number, number][] = []
-    const y = 0.06
+    const y = 0.11
     for (let i = 0; i < 8; i++) { const z = 3 + i * 2.4; L.push([x0 + 21, y, z, 30, 1.8], [x0 + 21, y, -z, 30, 1.8]) } // threshold "piano keys"
     for (let x = 120; x < RWY.len - 120; x += 50) L.push([x0 + x, y, 0, 30, 0.9]) // centreline
     L.push([x0 + RWY.len / 2, y, 21.6, RWY.len, 0.9], [x0 + RWY.len / 2, y, -21.6, RWY.len, 0.9]) // edge stripes
@@ -164,16 +170,16 @@ function Runway({ x0, approachLights }: { x0: number; approachLights?: boolean }
   }, [x0, approachLights])
   return (
     <group>
-      <mesh position={[x0 + RWY.len / 2, 0.03, 0]} rotation-x={-Math.PI / 2} material={rwMat} receiveShadow>
+      <mesh position={[x0 + RWY.len / 2, 0.06, 0]} rotation-x={-Math.PI / 2} material={rwMat} receiveShadow>
         <planeGeometry args={[RWY.len, RWY.width]} />
       </mesh>
       {/* shoulders */}
-      <mesh position={[x0 + RWY.len / 2, 0.02, 0]} rotation-x={-Math.PI / 2} receiveShadow>
+      <mesh position={[x0 + RWY.len / 2, 0.0, 0]} rotation-x={-Math.PI / 2} receiveShadow>
         <planeGeometry args={[RWY.len + 120, RWY.width + 16]} />
         <meshStandardMaterial color="#6d6f6a" roughness={0.95} polygonOffset polygonOffsetFactor={-0.5} />
       </mesh>
       <primitive object={markMesh} />
-      <mesh position={[x0 + 62, 0.07, 0]} rotation={[-Math.PI / 2, 0, -Math.PI / 2]}>
+      <mesh position={[x0 + 62, 0.11, 0]} rotation={[-Math.PI / 2, 0, -Math.PI / 2]}>
         <planeGeometry args={[18, 9]} />
         <meshStandardMaterial map={number} transparent roughness={0.75} polygonOffset polygonOffsetFactor={-2} />
       </mesh>
@@ -240,7 +246,7 @@ function Airport({ ap }: { ap: AirportDef }) {
     for (const st of ap.stands) L.push([st.x, STAND_STOP, 7, 0.5, 0, 0]) // stop line across the lead-in
     for (const x of [30, 1500, 2950]) for (const dz of [-62, -63, -65, -66]) L.push([x0 + x, dz, 23, 0.3, 0, 0]) // holding position
     const im = new THREE.InstancedMesh(quad, mats.yellow, L.length), o = new THREE.Object3D()
-    L.forEach(([x, z, l, w, a], i) => { o.position.set(x - x0, 0.075, z); o.rotation.set(0, a, 0); o.scale.set(l, 1, w); o.updateMatrix(); im.setMatrixAt(i, o.matrix) })
+    L.forEach(([x, z, l, w, a], i) => { o.position.set(x - x0, 0.1, z); o.rotation.set(0, a, 0); o.scale.set(l, 1, w); o.updateMatrix(); im.setMatrixAt(i, o.matrix) })
     im.receiveShadow = true
     return im
   }, [ap, quad, mats, x0])
@@ -265,7 +271,7 @@ function Airport({ ap }: { ap: AirportDef }) {
   return (
     <group position={[x0, 0, 0]}>
       {paved.map((r, i) => (
-        <mesh key={i} position={[(r.x0 + r.x1) / 2 - x0, r.kind === 'apron' ? 0.035 : 0.04, (r.z0 + r.z1) / 2]} rotation-x={-Math.PI / 2} material={r.kind === 'apron' ? mats.apron : mats.taxi} receiveShadow>
+        <mesh key={i} position={[(r.x0 + r.x1) / 2 - x0, r.kind === 'apron' ? 0.03 : 0.045, (r.z0 + r.z1) / 2]} rotation-x={-Math.PI / 2} material={r.kind === 'apron' ? mats.apron : mats.taxi} receiveShadow>
           <planeGeometry args={[r.x1 - r.x0, r.z1 - r.z0]} />
         </mesh>
       ))}
@@ -273,7 +279,7 @@ function Airport({ ap }: { ap: AirportDef }) {
       <primitive object={lights} />
       {ap.stands.map((st) => (
         <group key={st.id}>
-          <mesh position={[st.x - x0 + 4.5, 0.08, STAND_STOP + 8]} rotation-x={-Math.PI / 2}><planeGeometry args={[5, 5]} /><meshStandardMaterial map={standNumber(st.id)} transparent polygonOffset polygonOffsetFactor={-3} /></mesh>
+          <mesh position={[st.x - x0 + 4.5, 0.1, STAND_STOP + 8]} rotation-x={-Math.PI / 2}><planeGeometry args={[5, 5]} /><meshStandardMaterial map={standNumber(st.id)} transparent polygonOffset polygonOffsetFactor={-3} /></mesh>
           {/* jet bridge from the terminal to the forward left door */}
           <JetBridge from={[st.x - x0 - 14, TERMINAL_Z + 2]} to={[st.x - x0 - 3.2, STAND_STOP + 8]} mat={mats.bridge} />
           {/* docking guidance board on the terminal facade */}
