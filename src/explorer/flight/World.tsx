@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { glowSprite } from '../../utils/geom'
 import { AIM, DEST, GS_ANGLE, RWY, AC } from './fdm'
 import { FS, useFlight } from './state'
+import { AIRPORTS, STAND_STOP, TERMINAL_Z, type Airport as AirportDef } from './airports'
 
 /*
  * The world is drawn around a floating origin: the aircraft always sits at x = z = 0 and the world
@@ -205,34 +206,109 @@ function Papi() {
 }
 
 /* ------------------------------------------------------------------ airport buildings, forests, villages */
-function Airport({ x0 }: { x0: number }) {
-  const concrete = useMemo(() => new THREE.MeshStandardMaterial({ color: '#8f918d', roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -1 }), [])
-  const glass = useMemo(() => new THREE.MeshPhysicalMaterial({ color: '#3a5068', roughness: 0.08, metalness: 0.4, clearcoat: 1 }), [])
-  const wall = useMemo(() => new THREE.MeshStandardMaterial({ color: '#d8d6cf', roughness: 0.7 }), [])
-  const roof = useMemo(() => new THREE.MeshStandardMaterial({ color: '#7f868d', roughness: 0.5, metalness: 0.6 }), [])
+function Airport({ ap }: { ap: AirportDef }) {
+  const x0 = ap.x0
+  const mats = useMemo(() => {
+    const asphalt = canvas(256, 256, (g) => { const r = rng(17); g.fillStyle = '#4a4c4f'; g.fillRect(0, 0, 256, 256); noise(g, 256, 256, 14000, 0.25, r); noise(g, 256, 256, 6000, 0.1, r, true) })
+    asphalt.repeat.set(1, 1)
+    const conc = canvas(256, 256, (g) => {
+      const r = rng(23); g.fillStyle = '#9a9b97'; g.fillRect(0, 0, 256, 256); noise(g, 256, 256, 9000, 0.12, r)
+      g.strokeStyle = 'rgba(60,60,58,0.5)'; g.lineWidth = 1; for (let i = 0; i <= 256; i += 64) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke() } // slab joints
+      g.fillStyle = 'rgba(30,30,30,0.18)'; for (let i = 0; i < 5; i++) { g.beginPath(); g.ellipse(r() * 256, r() * 256, 10 + r() * 30, 6 + r() * 14, r() * 3, 0, 7); g.fill() } // oil stains
+    })
+    return {
+      taxi: new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -1 }),
+      apron: new THREE.MeshStandardMaterial({ map: conc, roughness: 0.88, polygonOffset: true, polygonOffsetFactor: -1 }),
+      yellow: new THREE.MeshStandardMaterial({ color: '#e8b923', roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 }),
+      glass: new THREE.MeshPhysicalMaterial({ color: '#2f4458', roughness: 0.06, metalness: 0.5, clearcoat: 1 }),
+      wall: new THREE.MeshStandardMaterial({ color: '#d9d7d0', roughness: 0.7 }),
+      roof: new THREE.MeshStandardMaterial({ color: '#7f868d', roughness: 0.5, metalness: 0.6 }),
+      bridge: new THREE.MeshStandardMaterial({ color: '#b8bcc0', roughness: 0.45, metalness: 0.5 }),
+      board: new THREE.MeshBasicMaterial({ color: '#ffcf3a' }),
+    }
+  }, [])
+  const quad = useMemo(() => { const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2); return g }, [])
+  // paved areas (runway is drawn separately)
+  const paved = ap.rects.filter((r) => r.kind !== 'runway')
+  // yellow centrelines, stop bars and runway-holding positions as one instanced mesh
+  const lines = useMemo(() => {
+    const L: [number, number, number, number, number, number][] = [] // x, z, length, width, angle
+    for (const pl of ap.taxiCentre) for (let i = 0; i < pl.length - 1; i++) {
+      const [ax, az] = pl[i], [bx, bz] = pl[i + 1]
+      L.push([(ax + bx) / 2, (az + bz) / 2, Math.hypot(bx - ax, bz - az), 0.35, -Math.atan2(bz - az, bx - ax), 0])
+    }
+    for (const st of ap.stands) L.push([st.x, STAND_STOP, 7, 0.5, 0, 0]) // stop line across the lead-in
+    for (const x of [30, 1500, 2950]) for (const dz of [-62, -63, -65, -66]) L.push([x0 + x, dz, 23, 0.3, 0, 0]) // holding position
+    const im = new THREE.InstancedMesh(quad, mats.yellow, L.length), o = new THREE.Object3D()
+    L.forEach(([x, z, l, w, a], i) => { o.position.set(x - x0, 0.075, z); o.rotation.set(0, a, 0); o.scale.set(l, 1, w); o.updateMatrix(); im.setMatrixAt(i, o.matrix) })
+    im.receiveShadow = true
+    return im
+  }, [ap, quad, mats, x0])
+  // taxiway edge lights (blue) and centreline lights (green)
+  const lights = useMemo(() => {
+    const pos: number[] = [], col: number[] = []
+    const B = new THREE.Color('#3d7bff'), Gn = new THREE.Color('#3dff8a')
+    for (const r of paved.filter((q) => q.kind === 'taxiway')) {
+      const along = r.x1 - r.x0 > r.z1 - r.z0
+      if (along) for (let x = r.x0; x <= r.x1; x += 40) { pos.push(x - x0, 0.3, r.z0 - 1, x - x0, 0.3, r.z1 + 1); col.push(B.r, B.g, B.b, B.r, B.g, B.b) }
+      else for (let z = r.z0; z <= r.z1; z += 40) { pos.push(r.x0 - 1 - x0, 0.3, z, r.x1 + 1 - x0, 0.3, z); col.push(B.r, B.g, B.b, B.r, B.g, B.b) }
+    }
+    for (const pl of ap.taxiCentre) for (let i = 0; i < pl.length - 1; i++) {
+      const [ax, az] = pl[i], [bx, bz] = pl[i + 1], n = Math.floor(Math.hypot(bx - ax, bz - az) / 15)
+      for (let k = 0; k <= n; k++) { pos.push(ax + ((bx - ax) * k) / n - x0, 0.12, az + ((bz - az) * k) / n); col.push(Gn.r, Gn.g, Gn.b) }
+    }
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
+    return new THREE.Points(geo, new THREE.PointsMaterial({ size: 1.3, map: glowSprite(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }))
+  }, [ap, paved, x0])
+  const standNumber = (id: string) => canvas(128, 128, (g) => { g.fillStyle = '#e8b923'; g.font = 'bold 96px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(id, 64, 68) }, false)
   return (
     <group position={[x0, 0, 0]}>
-      <mesh position={[1100, 0.025, -260]} rotation-x={-Math.PI / 2} material={concrete} receiveShadow><planeGeometry args={[900, 220]} /></mesh>
-      {[600, 1600, 2600].map((x) => <mesh key={x} position={[x, 0.025, -95]} rotation-x={-Math.PI / 2} material={concrete} receiveShadow><planeGeometry args={[23, 150]} /></mesh>)}
-      <mesh position={[1100, 0.025, -90]} rotation-x={-Math.PI / 2} material={concrete} receiveShadow><planeGeometry args={[2600, 23]} /></mesh>
-      <mesh position={[1100, 9, -420]} material={wall} castShadow receiveShadow><boxGeometry args={[520, 18, 70]} /></mesh>
-      <mesh position={[1100, 12, -383]} material={glass}><boxGeometry args={[500, 9, 1]} /></mesh>
-      <mesh position={[1100, 18.5, -420]} material={roof}><boxGeometry args={[530, 1.2, 76]} /></mesh>
-      {[330, 470].map((x) => (
-        <group key={x} position={[x, 0, -410]}>
-          <mesh position={[0, 9, 0]} material={wall} castShadow receiveShadow><boxGeometry args={[110, 18, 70]} /></mesh>
-          {/* barrel roof: a half cylinder lying along z */}
-          <mesh position={[0, 18, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[1, 1, 0.22]} material={roof} castShadow><cylinderGeometry args={[55, 55, 70, 32, 1, false, -Math.PI / 2, Math.PI]} /></mesh>
+      {paved.map((r, i) => (
+        <mesh key={i} position={[(r.x0 + r.x1) / 2 - x0, r.kind === 'apron' ? 0.035 : 0.04, (r.z0 + r.z1) / 2]} rotation-x={-Math.PI / 2} material={r.kind === 'apron' ? mats.apron : mats.taxi} receiveShadow>
+          <planeGeometry args={[r.x1 - r.x0, r.z1 - r.z0]} />
+        </mesh>
+      ))}
+      <primitive object={lines} />
+      <primitive object={lights} />
+      {ap.stands.map((st) => (
+        <group key={st.id}>
+          <mesh position={[st.x - x0 + 4.5, 0.08, STAND_STOP + 8]} rotation-x={-Math.PI / 2}><planeGeometry args={[5, 5]} /><meshStandardMaterial map={standNumber(st.id)} transparent polygonOffset polygonOffsetFactor={-3} /></mesh>
+          {/* jet bridge from the terminal to the forward left door */}
+          <JetBridge from={[st.x - x0 - 14, TERMINAL_Z + 2]} to={[st.x - x0 - 3.2, STAND_STOP + 8]} mat={mats.bridge} />
+          {/* docking guidance board on the terminal facade */}
+          <mesh position={[st.x - x0, 9, TERMINAL_Z + 0.6]} material={mats.board}><boxGeometry args={[2.2, 1.1, 0.2]} /></mesh>
         </group>
       ))}
-      <group position={[1750, 0, -300]}>
-        <mesh position={[0, 22, 0]} material={wall} castShadow><cylinderGeometry args={[3.5, 5, 44, 20]} /></mesh>
-        <mesh position={[0, 47, 0]} material={glass} castShadow><cylinderGeometry args={[8, 6.5, 6, 12]} /></mesh>
-        <mesh position={[0, 50.6, 0]} material={roof}><cylinderGeometry args={[8.6, 8.6, 1.2, 12]} /></mesh>
+      {/* terminal */}
+      <mesh position={[1450, 10, TERMINAL_Z - 35]} material={mats.wall} castShadow receiveShadow><boxGeometry args={[900, 20, 70]} /></mesh>
+      <mesh position={[1450, 11, TERMINAL_Z - 0.2]} material={mats.glass}><boxGeometry args={[880, 12, 0.8]} /></mesh>
+      <mesh position={[1450, 20.6, TERMINAL_Z - 35]} material={mats.roof} castShadow><boxGeometry args={[915, 1.2, 78]} /></mesh>
+      {[600, 2400].map((x) => (
+        <group key={x} position={[x, 0, -420]}>
+          <mesh position={[0, 9, 0]} material={mats.wall} castShadow receiveShadow><boxGeometry args={[110, 18, 70]} /></mesh>
+          <mesh position={[0, 18, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[1, 1, 0.22]} material={mats.roof} castShadow><cylinderGeometry args={[55, 55, 70, 32, 1, false, -Math.PI / 2, Math.PI]} /></mesh>
+        </group>
+      ))}
+      <group position={[2300, 0, -300]}>
+        <mesh position={[0, 22, 0]} material={mats.wall} castShadow><cylinderGeometry args={[3.5, 5, 44, 20]} /></mesh>
+        <mesh position={[0, 47, 0]} material={mats.glass} castShadow><cylinderGeometry args={[8, 6.5, 6, 12]} /></mesh>
+        <mesh position={[0, 50.6, 0]} material={mats.roof}><cylinderGeometry args={[8.6, 8.6, 1.2, 12]} /></mesh>
       </group>
     </group>
   )
 }
+function JetBridge({ from, to, mat }: { from: [number, number]; to: [number, number]; mat: THREE.Material }) {
+  const dx = to[0] - from[0], dz = to[1] - from[1], len = Math.hypot(dx, dz)
+  return (
+    <group position={[(from[0] + to[0]) / 2, 0, (from[1] + to[1]) / 2]} rotation={[0, -Math.atan2(dz, dx), 0]}>
+      <mesh position={[0, 4.6, 0]} material={mat} castShadow><boxGeometry args={[len, 2.8, 2.6]} /></mesh>
+      <mesh position={[len / 2 - 6, 1.6, 0]} material={mat}><boxGeometry args={[0.6, 3.2, 0.6]} /></mesh>
+      <mesh position={[len / 2 - 6, 0.4, 0]} material={mat}><boxGeometry args={[1.6, 0.8, 2.8]} /></mesh>
+    </group>
+  )
+}
+
 function Forests() {
   const trees = useMemo(() => {
     const r = rng(11)
@@ -358,8 +434,7 @@ export function World() {
         <Runway x0={0} />
         <Runway x0={DEST} approachLights />
         <Papi />
-        <Airport x0={0} />
-        <Airport x0={DEST} />
+        {AIRPORTS.map((ap) => <Airport key={ap.id} ap={ap} />)}
         <Forests />
         <Clouds />
         <GlidePath />

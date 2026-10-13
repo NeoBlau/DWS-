@@ -5,7 +5,7 @@ import { DEG, DEST, DETENT, type Sim } from './fdm'
  * Guided flight: an instructor that only suggests. Each step names the control to use (it gets highlighted
  * in the UI) and a condition read from the simulation; it never moves a control or the aircraft.
  */
-export type Ctl = 'flaps' | 'thrust' | 'stick' | 'pedals' | 'gear' | 'speedbrake' | 'reverse' | 'brakes' | 'none'
+export type Ctl = 'flaps' | 'thrust' | 'stick' | 'pedals' | 'gear' | 'speedbrake' | 'reverse' | 'brakes' | 'engines' | 'park' | 'push' | 'none'
 export interface Step { id: string; ctl: Ctl; text: Txt; hint: Txt; done: (s: Sim) => boolean }
 
 const ft = (s: Sim) => s.d.alt - 10
@@ -30,3 +30,14 @@ export const TAKEOFF_STEPS: Step[] = [
 ]
 export const APPROACH_STEPS: Step[] = TAKEOFF_STEPS.slice(TAKEOFF_STEPS.findIndex((x) => x.id === 'full'))
 export const CRUISE_STEPS: Step[] = TAKEOFF_STEPS.slice(TAKEOFF_STEPS.findIndex((x) => x.id === 'turn'))
+
+/* full flight: cold aircraft at the gate → departure → cruise → landing → taxi → parked at the other airport */
+export const FULL_STEPS: Step[] = [
+  { id: 'start', ctl: 'engines', text: T('Запустите двигатели: MASTER 1 и 2. Ждите AVAIL (~20 с)', 'Start the engines: MASTER 1 and 2. Wait for AVAIL (~20 s)'), hint: T('Клавиша M или кнопки MASTER. Смотрите на EGT — пик при розжиге', 'Key M or the MASTER buttons. Watch EGT peak at light-off'), done: (s) => s.eng.every((e) => e.state === 'run') },
+  { id: 'push', ctl: 'push', text: T('Буксировка: снимите стояночный тормоз (P), включите буксир (T), педалями разверните нос', 'Pushback: release the parking brake (P), connect the tug (T), steer the nose with the pedals'), hint: T('Тягач толкает назад со скоростью пешехода', 'The tug pushes back at walking pace'), done: (s) => !s.ctl.parkBrake && s.pos.z > -345 },
+  { id: 'taxi', ctl: 'thrust', text: T('Отцепите буксир (T). Рулите по жёлтой линии к началу полосы и встаньте на ось', 'Release the tug (T). Taxi along the yellow line to the start of the runway and line up'), hint: T('Немного газа (~30 % N1) чтобы тронуться, потом малый газ; поворот — педали. Не больше 20 узлов', 'A little thrust (~30 % N1) to break away, then idle; steer with the pedals. Max 20 kt'), done: (s) => s.pos.x < 500 && Math.abs(s.pos.z) < 12 && Math.abs(Math.atan2(s.vel.z, s.vel.x + 1e-6)) < 0.3 },
+  ...TAKEOFF_STEPS,
+  { id: 'vacate', ctl: 'pedals', text: T('Освободите полосу по рулёжке и рулите к перрону', 'Vacate the runway via a taxiway and taxi to the apron'), hint: T('Рулёжки — жёлтые линии; перрон у терминала', 'Taxiways have yellow lines; the apron is by the terminal'), done: (s) => s.pos.x > DEST - 200 && s.d.surface === 'apron' },
+  { id: 'dock', ctl: 'brakes', text: T('Встаньте на стоянку по табло — до надписи STOP', 'Park on the stand by the docking board — until it reads STOP'), hint: T('Табло показывает метры до стоп-линии и куда довернуть', 'The board shows metres to the stop line and which way to steer'), done: (s) => !!s.d.stand && s.d.stand.airport === 'B' && Math.abs(s.d.stand.dist) < 4 && s.d.gs < 0.5 },
+  { id: 'shutdown', ctl: 'engines', text: T('Стояночный тормоз (P) и выключите двигатели (MASTER OFF)', 'Set the parking brake (P) and shut the engines down (MASTER OFF)'), hint: T('Рейс завершён после выключения двигателей', 'The flight ends when the engines are off'), done: (s) => s.arrived },
+]

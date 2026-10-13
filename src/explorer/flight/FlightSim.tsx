@@ -9,11 +9,11 @@ import { useT, useLang, T, type Txt } from '../i18n'
 import { A320 } from './Aircraft'
 import { World } from './World'
 import { Pfd, Ecam, ForceLegend, useSnap, type Snap } from './Hud'
-import { AC, DEG, DEST, DETENT, H, KT, LEVER, step, advance, type Sim } from './fdm'
+import { AC, DEG, DEST, DETENT, H, KT, LEVER, step, advance, failEngine, type Sim } from './fdm'
 import { FS, useFlight, resetSim, type CamMode } from './state'
 import { applyInputs } from './input'
 import { phaseNarration, explain, eventText, type Topic } from './narration'
-import { TAKEOFF_STEPS, APPROACH_STEPS, CRUISE_STEPS, type Ctl } from './guide'
+import { FULL_STEPS, TAKEOFF_STEPS, APPROACH_STEPS, CRUISE_STEPS, type Ctl } from './guide'
 import { startAudio, stopAudio, updateAudio } from './audio'
 
 /* ------------------------------------------------------------------ simulation loop: fixed 240 Hz steps */
@@ -118,7 +118,7 @@ function useGuideStep() {
   const start = useFlight((s) => s.start)
   const epoch = useFlight((s) => s.epoch)
   const [i, setI] = useState(0)
-  const steps = start === 'approach' ? APPROACH_STEPS : start === 'cruise' ? CRUISE_STEPS : TAKEOFF_STEPS
+  const steps = start === 'gate' ? FULL_STEPS : start === 'approach' ? APPROACH_STEPS : start === 'cruise' ? CRUISE_STEPS : TAKEOFF_STEPS
   useEffect(() => { setI(0) }, [epoch, start])
   useEffect(() => {
     const id = setInterval(() => { setI((k) => { let j = k; while (j < steps.length && steps[j].done(FS.sim)) j++; return j }) }, 250)
@@ -185,6 +185,14 @@ function ControlPanel({ v }: { v: Snap }) {
   const cams: [CamMode, Txt][] = [['chase', T('Сзади', 'Chase')], ['side', T('Сбоку', 'Side')], ['cockpit', T('Кабина', 'Cockpit')], ['wing', T('Крыло', 'Wing')], ['tower', T('С земли', 'Tower')], ['orbit', T('Свободно', 'Free')]]
   return (
     <aside className="fs-panel glass">
+      <div className={`fs-ground ${hl === 'engines' || hl === 'park' || hl === 'push' ? 'fs-hl' : ''}`}>
+        <span className="eyebrow">{t(T('Двигатели и земля', 'Engines & ground'))}</span>
+        <div className="fs-seg wrap">
+          {[0, 1].map((i) => <button key={i} className={`btn sm fs-master ${v.masters[i] ? 'on' : ''} ${v.eng[i] === 'failed' ? 'fail' : ''}`} onClick={() => set(() => { c.master[i] = !c.master[i] })}>MASTER {i + 1}<i>{v.eng[i] === 'run' ? '●' : v.eng[i] === 'starting' ? '◐' : v.eng[i] === 'failed' ? '✕' : '○'}</i></button>)}
+          <button className={`btn sm ${v.park ? 'on' : ''}`} onClick={() => set(() => { c.parkBrake = !c.parkBrake })}>PARK BRK (P)</button>
+          <button className={`btn sm ${v.push ? 'on' : ''}`} disabled={v.airborne || v.gs > 6} onClick={() => set(() => { c.push = !c.push })}>{t(T('Буксир (T)', 'Pushback (T)'))}</button>
+        </div>
+      </div>
       <div className="fs-row">
         <ThrustLever v={v} hl={hl === 'thrust'} />
         <div className={`fs-flaps ${hl === 'flaps' ? 'fs-hl' : ''}`}>
@@ -225,6 +233,11 @@ function ControlPanel({ v }: { v: Snap }) {
           <button className="btn sm" onPointerDown={() => FS.keys.add('trimUp')} onPointerUp={() => FS.keys.delete('trimUp')} onPointerLeave={() => FS.keys.delete('trimUp')}>TRIM ▲ ]</button>
         </div>}
       </div>
+      <span className="eyebrow">{t(T('Тренировка отказов', 'Failure training'))}</span>
+      <div className="fs-seg wrap">
+        <button className="btn sm" disabled={!v.airborne} onClick={() => failEngine(FS.sim, 0)}>{t(T('Отказ двиг. 1', 'Fail engine 1'))}</button>
+        <button className="btn sm" disabled={!v.airborne} onClick={() => failEngine(FS.sim, 1)}>{t(T('Отказ двиг. 2', 'Fail engine 2'))}</button>
+      </div>
       <span className="eyebrow">{t(T('Камера (C)', 'Camera (C)'))}</span>
       <div className="fs-seg wrap">{cams.map(([m, l]) => <button key={m} className={`btn sm ${ui.cam === m ? 'on' : ''}`} onClick={() => ui.set({ cam: m })}>{t(l)}</button>)}</div>
       <div className="fs-seg wrap">
@@ -258,6 +271,7 @@ function NarrationPanel() {
       else if (c.law !== p.law) tp = 'law'
       else if (Math.abs(c.speedbrake - p.speedbrake) > 0.1 || c.spoilersArmed !== p.spoilersArmed) tp = 'speedbrake'
       else if (c.autobrake !== p.autobrake || (c.brake && !p.brake)) tp = 'brakes'
+      else if (c.parkBrake !== p.parkBrake) tp = 'park'
       else if (c.trim && !p.trim) tp = 'trim'
       else if (Math.abs(c.stickX) > 0.4 && Math.abs(p.stickX) <= 0.4 && s.airborne) tp = 'roll'
       else if (Math.abs(c.stickY) > 0.4 && Math.abs(p.stickY) <= 0.4 && s.airborne) tp = 'pitch'
@@ -268,6 +282,7 @@ function NarrationPanel() {
         else if (e === 'stall') tp = 'stall'
         else if (e === 'groundSpoilers') tp = 'groundSpoilers'
         else if (e === 'tailstrike') tp = 'tailstrike'
+        else if (['engineStart', 'flapJam', 'flapTorn', 'gearDamage', 'gearCollapse', 'overstress', 'engineFail', 'flameout', 'bellyLanding', 'toConfig', 'engineStrike', 'pushback'].includes(e)) tp = e as Topic
       }
       lastEv.current = s.events.length
       prev.current = { ...c, conf: s.srf.confTarget }
@@ -312,7 +327,7 @@ function Toasts() {
       const add: { id: number; txt: Txt; bad: boolean }[] = []
       for (let i = seen.current; i < ev.length; i++) {
         const txt = eventText(ev[i].e, ev[i].v)
-        if (txt) add.push({ id: ev[i].t * 1000 + i, txt, bad: ['crash', 'stall', 'tailstrike', 'hardLanding', 'vfe', 'overspeed', 'offRunway'].includes(ev[i].e) })
+        if (txt) add.push({ id: ev[i].t * 1000 + i, txt, bad: ['crash', 'stall', 'tailstrike', 'hardLanding', 'vfe', 'overspeed', 'offRunway', 'flapJam', 'flapTorn', 'gearDamage', 'gearCollapse', 'overstress', 'engineFail', 'flameout', 'engineStrike', 'toConfig', 'bellyLanding', 'fuelLow'].includes(ev[i].e) })
       }
       seen.current = ev.length
       if (add.length) setList((l) => [...l, ...add].slice(-3))
@@ -340,6 +355,9 @@ function useKeyboard() {
         case 'Space': ui.set({ paused: !ui.paused }); e.preventDefault(); break
         case 'KeyC': { const m: CamMode[] = ['chase', 'side', 'cockpit', 'wing', 'tower', 'orbit']; ui.set({ cam: m[(m.indexOf(ui.cam) + 1) % m.length] }); break }
         case 'KeyH': ui.set({ forces: !ui.forces }); break
+        case 'KeyP': c.parkBrake = !c.parkBrake; break
+        case 'KeyT': if (!FS.sim.airborne) c.push = !c.push; break
+        case 'KeyM': { const on = !(c.master[0] && c.master[1]); c.master = [on, on]; break }
         case 'Digit1': c.lever = 0; break
         case 'Digit2': c.lever = DETENT.CL; break
         case 'Digit3': c.lever = DETENT.FLX; break
@@ -363,12 +381,12 @@ export function FlightSim() {
   const v = useSnap(15)
   const orbit = useRef<OrbitImpl | null>(null)
   useKeyboard()
-  useEffect(() => { resetSim('runway'); return () => stopAudio() }, [])
+  useEffect(() => { resetSim('gate'); return () => stopAudio() }, [])
   useEffect(() => {
     if (!import.meta.env.DEV) return
     Object.assign(window, { __flight: { FS, resetSim, advance: (sec: number) => advance(FS.sim, sec), ui: useFlight } })
   }, [])
-  const starts: [Parameters<typeof resetSim>[0], Txt][] = [['runway', T('Взлёт', 'Take-off')], ['approach', T('Заход', 'Approach')], ['cruise', T('В полёте', 'In flight')]]
+  const starts: [Parameters<typeof resetSim>[0], Txt][] = [['gate', T('Полный рейс', 'Full flight')], ['runway', T('С полосы', 'From runway')], ['approach', T('Заход', 'Approach')], ['cruise', T('В полёте', 'In flight')]]
   return (
     <div className="fs" onPointerDown={() => { if (ui.sound) startAudio() }}>
       <Canvas className="fs-canvas" shadows dpr={quality === 'high' ? [1, 1.6] : [1, 1.2]}
@@ -404,9 +422,55 @@ export function FlightSim() {
       <ForceLegend v={v} />
       <ControlPanel v={v} />
       <Sidestick />
-      {v.crashed && <div className="fs-crash glass"><b>{t(T('Авария', 'Crash'))}</b><button className="btn primary" onClick={() => resetSim(ui.start)}>{t(T('Заново', 'Try again'))}</button></div>}
+      <Vdgs v={v} />
+      {v.crashed && <div className="fs-crash glass"><b>{t(T('Авария', 'Crash'))}</b><p>{t(CRASH[v.crashed] ?? CRASH.hard)}</p><button className="btn primary" onClick={() => resetSim(ui.start)}>{t(T('Заново', 'Try again'))}</button></div>}
+      {v.arrived && <Arrival v={v} />}
       <p className="fs-note">{t(T('Упрощённая учебная модель. Цифры приблизительные. Клавиши: W/S или ↑/↓ — тангаж, A/D — крен, Q/E — педали, Shift/Ctrl или 1–4 — РУД, F/V — закрылки, G — шасси, B — тормоза, R — реверс, C — камера, Пробел — пауза.', 'Simplified training model. Numbers are approximate. Keys: W/S or ↑/↓ pitch, A/D roll, Q/E pedals, Shift/Ctrl or 1–4 thrust, F/V flaps, G gear, B brakes, R reverse, C camera, Space pause.'))}</p>
     </div>
   )
 }
 void step; void ({} as Sim)
+
+const CRASH: Record<string, Txt> = {
+  hard: T('Слишком большая вертикальная скорость при касании — шасси и конструкция не выдержали.', 'The sink rate at touchdown was far too high — the gear and structure failed.'),
+  structure: T('Перегрузка превысила расчётную (1,5 × эксплуатационной): крыло разрушилось. В нормальном законе это не дала бы защита — в прямом законе всё на пилоте.', 'Load factor exceeded the ultimate load (1.5 × limit): the wing failed. Normal law would have prevented it — in direct law it is on the pilot.'),
+  flutter: T('Скорость далеко за VMO/MMO: начался флаттер — самовозбуждающиеся колебания, которые разрушили оперение.', 'Far beyond VMO/MMO: flutter — self-exciting vibration — tore the tail apart.'),
+  engine: T('Двигатель ударился о землю на большой скорости или с большим креном.', 'An engine hit the ground at speed or with too much bank.'),
+  wingtip: T('Законцовка крыла зацепила землю — самолёт развернуло и разрушило.', 'A wingtip caught the ground — the aircraft cartwheeled.'),
+  belly: T('Посадка на брюхо с большой вертикальной скоростью.', 'A belly landing with a high sink rate.'),
+  tail: T('Сильный удар хвостом о полосу разрушил хвостовую часть.', 'A violent tail strike destroyed the aft fuselage.'),
+  terrain: T('Столкновение с землёй.', 'Controlled flight into terrain.'),
+}
+
+/** visual docking guidance on the stand: distance to the stop line and left / right */
+function Vdgs({ v }: { v: Snap }) {
+  const t = useT()
+  const st = v.stand
+  if (!st || v.airborne || v.gs > 12 || Math.abs(st.dist) > 70 || Math.abs(st.lat) > 12 || !v.ever) return null
+  const stop = Math.abs(st.dist) < 1 || st.dist < 0
+  return (
+    <div className="fs-vdgs" aria-live="polite">
+      <small>{t(T('Стоянка', 'Stand'))} {st.airport}{st.id}</small>
+      <b className={stop ? 'stop' : ''}>{stop ? 'STOP' : `${st.dist.toFixed(1)} m`}</b>
+      <span>{Math.abs(st.lat) < 0.6 ? '▲' : st.lat > 0 ? t(T('◀ левее', '◀ left')) : t(T('правее ▶', 'right ▶'))}</span>
+    </div>
+  )
+}
+function Arrival({ v }: { v: Snap }) {
+  const t = useT()
+  const ui = useFlight()
+  const td = Math.round(v.tdVs ?? 0)
+  const grade = td > -180 ? T('мягко', 'smooth') : td > -360 ? T('нормально', 'firm') : td > -600 ? T('жёстко', 'hard') : T('очень жёстко', 'very hard')
+  return (
+    <div className="fs-crash fs-arrived glass">
+      <b>{t(T('Прибыли на стоянку', 'Parked at the gate'))}</b>
+      <ul>
+        <li>{t(T('Касание', 'Touchdown'))}: {td} {t(T('фт/мин', 'ft/min'))} — {t(grade)}</li>
+        <li>{t(T('Сожжено топлива', 'Fuel burnt'))}: {Math.round(v.fuelUsed)} {t(T('кг', 'kg'))}</li>
+        <li>{t(T('Время рейса', 'Block time'))}: {Math.floor(v.t / 60)} {t(T('мин', 'min'))}</li>
+        <li>{t(T('Повреждения', 'Damage'))}: {v.warnings.filter((w) => w.lvl !== 'green').length ? v.warnings.filter((w) => w.lvl !== 'green').map((w) => w.txt).join(', ') : t(T('нет', 'none'))}</li>
+      </ul>
+      <button className="btn primary" onClick={() => resetSim(ui.start)}>{t(T('Ещё рейс', 'Fly again'))}</button>
+    </div>
+  )
+}

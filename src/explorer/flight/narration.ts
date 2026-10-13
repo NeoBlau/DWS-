@@ -28,6 +28,28 @@ export function phaseNarration(s: Sim): { phase: Txt; now: Txt } {
     }
     return { phase: T('Авария', 'Crash'), now: why[s.crashed] ?? T('Самолёт разрушен.', 'The aircraft is destroyed.') }
   }
+  const engRun = s.eng.filter((e) => e.state === 'run').length, engStart = s.eng.some((e) => e.state === 'starting')
+  if (!s.airborne && !s.everAirborne && (engRun < 2 || s.ctl.push || (d.surface !== 'runway' && d.gs < 25))) {
+    if (engStart) return {
+      phase: T('Запуск двигателей', 'Engine start'),
+      now: T(`Воздух от вспомогательной силовой установки (APU) крутит воздушный стартер — он раскручивает ротор (N1 ${r0(s.n1[0])}%). На ~22 % оборотов компрессора открывается подача топлива и включаются свечи: розжиг, EGT подскакивает до ${r0(d.egt[0])} °C. Когда турбина начинает сама крутить компрессор, стартер отключается — двигатель выходит на малый газ.`,
+        `Air from the APU drives the air starter, which spins the rotor (N1 ${r0(s.n1[0])}%). At ~22 % core speed fuel and igniters come on: light-off, EGT jumps to ${r0(d.egt[0])} °C. Once the turbine can drive the compressor by itself the starter cuts out and the engine settles at idle.`),
+    }
+    if (engRun === 0) return {
+      phase: T('Холодная кабина у терминала', 'Cold aircraft at the gate'),
+      now: T(`Самолёт стоит носом к терминалу на стояночном тормозе. Заправлено ${r0(s.fuel)} кг топлива, взлётная масса ≈ ${(d.mass / 1000).toFixed(1)} т. Сначала запустите двигатели (MASTER 1 и 2) — без них нет ни тяги, ни основной гидравлики.`,
+        `The aircraft is parked nose-in at the terminal with the parking brake set. ${r0(s.fuel)} kg of fuel on board, take-off mass ≈ ${(d.mass / 1000).toFixed(1)} t. Start the engines first (MASTER 1 and 2) — without them there is no thrust and no main hydraulics.`),
+    }
+    if (s.ctl.push) return {
+      phase: T('Буксировка назад', 'Pushback'),
+      now: T('Самолёт не умеет ездить назад сам (реверс у терминала запрещён — сдувает людей и технику), поэтому тягач толкает его за носовую стойку. Педали сейчас поворачивают тягач — нос уходит в сторону, хвост — в противоположную.', 'An airliner cannot reverse by itself (reverse thrust at the gate would blow people and equipment away), so a tug pushes it by the nose gear. The pedals now steer the tug — the nose swings one way, the tail the other.'),
+    }
+    return {
+      phase: T('Руление', 'Taxi'),
+      now: T(`Скорость ${r0(d.gs)} узлов. Чтобы тронуться ${r0(d.mass / 1000)}-тонной машине, нужно ~30–40 % N1, потом хватает малого газа. Поворачивает носовое колесо (до 70° на малой скорости). Тормоза — B. Держитесь жёлтой линии, на полосе встаньте на ось.`,
+        `${r0(d.gs)} kt. A 60-tonne aircraft needs ~30–40 % N1 to break away, then idle is enough. The nosewheel steers (up to 70° at low speed). Brakes — B. Follow the yellow line and line up on the runway centreline.`),
+    }
+  }
   if (!s.airborne && !s.everAirborne) {
     if (d.gs < 2 && c.lever < 0.1) return {
       phase: T('На исполнительном старте', 'Lined up on the runway'),
@@ -49,6 +71,11 @@ export function phaseNarration(s: Sim): { phase: Txt; now: Txt } {
       now: T(`Тангаж ${(d.theta / DEG).toFixed(1)}°. Пока основные колёса на земле, больше 11,5° нельзя — хвост ударится о полосу. Подъёмная сила ${liftPct}% веса.`,
         `Pitch ${(d.theta / DEG).toFixed(1)}°. While the main wheels are on the ground, more than 11.5° strikes the tail. Lift is ${liftPct}% of weight.`),
     }
+  }
+  if (!s.airborne && s.everAirborne && s.arrived) return { phase: T('Рейс завершён', 'Flight complete'), now: T('Двигатели выключены, самолёт на стоянке. К двери подают телетрап, пассажиры выходят.', 'Engines off, parked at the stand. The jet bridge moves to the door and the passengers disembark.') }
+  if (!s.airborne && s.everAirborne && d.gs < 25 && d.surface !== 'runway') return {
+    phase: T('Руление к стоянке', 'Taxi to the gate'),
+    now: T(`Рулите к перрону у терминала. У стоянки включится табло стыковки: оно покажет метры до стоп-линии. Остановитесь на STOP, поставьте стояночный тормоз и выключите двигатели.`, `Taxi to the apron by the terminal. Near the stand the docking board lights up and counts the metres to the stop line. Stop at STOP, set the parking brake and shut the engines down.`),
   }
   if (!s.airborne && s.everAirborne) {
     if (d.gs > 3) return {
@@ -111,6 +138,7 @@ export function phaseNarration(s: Sim): { phase: Txt; now: Txt } {
 
 /* ---------------------------------------------------------------- how the system you just used works */
 export type Topic = 'flaps' | 'gear' | 'thrust' | 'pitch' | 'roll' | 'rudder' | 'speedbrake' | 'reverse' | 'brakes' | 'law' | 'trim' | 'alphaProt' | 'stall' | 'groundSpoilers' | 'tailstrike'
+  | 'engineStart' | 'park' | 'pushback' | 'flapJam' | 'flapTorn' | 'gearDamage' | 'gearCollapse' | 'overstress' | 'engineFail' | 'flameout' | 'bellyLanding' | 'toConfig' | 'engineStrike'
 export function explain(topic: Topic, s: Sim): { title: Txt; body: Txt } {
   const d = s.d
   switch (topic) {
@@ -162,6 +190,19 @@ export function explain(topic: Topic, s: Sim): { title: Txt; body: Txt } {
     case 'stall': return { title: T('Сваливание', 'Stall'), body: T(
       `Угол атаки превысил критический: поток срывается с верхней поверхности, подъёмная сила падает, сопротивление резко растёт. Выход: ручку от себя (уменьшить угол атаки), затем тяга.`,
       `Angle of attack passed the critical value: the flow separates from the upper surface, lift collapses and drag jumps. Recovery: stick forward (reduce angle of attack), then thrust.`) }
+    case 'engineStart': return { title: T('Запуск двигателя', 'Engine start'), body: T('Последовательность: воздух APU → воздушный стартер → ротор высокого давления разгоняется → подача топлива и зажигание → розжиг (EGT растёт) → турбина сама крутит компрессор → стартер отключается → малый газ (~20 % N1).', 'Sequence: APU air → air starter → HP rotor accelerates → fuel and ignition → light-off (EGT rises) → the turbine drives the compressor itself → starter cut-out → idle (~20 % N1).') }
+    case 'park': return { title: T('Стояночный тормоз', 'Parking brake'), body: T('Держит колёса тормозами от аккумулятора давления, даже без работающей гидравлики. Попробуете взлететь с ним — самолёт не разгонится, а система предупредит CONFIG PARK BRK.', 'Holds the wheels using an accumulator, even without hydraulic pumps running. Try to take off with it set and the aircraft will not accelerate — the CONFIG PARK BRK warning sounds.') }
+    case 'pushback': return { title: T('Буксировка', 'Pushback'), body: T('Тягач толкает самолёт за носовую стойку, отключив её рулевое управление от педалей пилота. Пилот в это время запускает двигатели и держит связь с наземным техником.', 'The tug pushes on the nose gear, with steering disconnected from the pilots. Meanwhile the crew starts the engines and talks to the ground engineer.') }
+    case 'flapJam': return { title: T('Закрылки заклинило', 'Flaps jammed'), body: T(`Скорость выше VFE: аэродинамическая нагрузка на механизацию превысила расчётную, и система защиты заблокировала привод. Закрылки остались в текущем положении — садиться придётся с ними, на повышенной скорости.`, `Speed above VFE: the air load on the high-lift devices exceeded their design load and the drive locked. The flaps stay where they are — you will have to land like this, at a higher speed.`) }
+    case 'flapTorn': return { title: T('Закрылок сорван', 'Flap torn off'), body: T('Скорость намного выше VFE: секцию закрылка сорвало потоком. Подъёмная сила на одном крыле меньше — самолёт кренит, нужно держать ручку в сторону. Скорость сваливания выросла.', 'Far above VFE the airflow tore a flap section off. One wing now lifts less, so the aircraft rolls — hold the stick against it. Stall speed went up.') }
+    case 'gearDamage': return { title: T('Шасси повреждено', 'Gear damaged'), body: T(`Шасси двигали или держали выпущенным выше допустимой скорости (VLO ${r0(s.spec.vlo)} / VLE ${r0(s.spec.vle)} узлов): створки сорваны, шасси больше не убирается. Лететь можно, но сопротивление выше — расход топлива растёт.`, `The gear was moved or kept down above its limit speed (VLO ${r0(s.spec.vlo)} / VLE ${r0(s.spec.vle)} kt): the doors are torn and the gear will not retract. You can fly on, but drag — and fuel burn — is higher.`) }
+    case 'gearCollapse': return { title: T('Стойка шасси сложилась', 'Gear leg collapsed'), body: T('Нагрузка на стойку превысила прочность: слишком жёсткое касание, посадка с большим сносом или выкатывание на грунт на скорости. Самолёт опустится на двигатель или фюзеляж.', 'The load on a leg exceeded its strength: too hard a touchdown, landing in a big crab, or running onto grass at speed. The aircraft settles on an engine or its fuselage.') }
+    case 'overstress': return { title: T('Перегрузка конструкции', 'Structural overstress'), body: T(`Перегрузка ${s.d.nz.toFixed(1)} g выше эксплуатационной (+2,5 g без закрылков, +2 g с закрылками). Металл получает остаточную деформацию; при 1,5 × от предела крыло разрушится.`, `Load factor ${s.d.nz.toFixed(1)} g is above the limit (+2.5 g clean, +2 g with flaps). The structure is permanently deformed; at 1.5 × the limit the wing fails.`) }
+    case 'engineFail': return { title: T('Отказ двигателя', 'Engine failure'), body: T('Тяга только с одной стороны разворачивает самолёт к отказавшему двигателю. Удерживайте педалью в сторону работающего, тяга работающего — до CL/MCT. A320 может лететь, набирать высоту и садиться на одном двигателе.', 'Thrust on one side only yaws the aircraft toward the dead engine. Hold rudder toward the good engine and set it to CL/MCT. An A320 can fly, climb and land on one engine.') }
+    case 'flameout': return { title: T('Двигатели заглохли', 'Flame-out'), body: T('Топливо кончилось — горение прекратилось, вентилятор лишь вращается набегающим потоком. Самолёт превратился в планёр: качество ≈ 17, то есть с 1 км высоты пролетит ≈ 17 км. Держите скорость наилучшего планирования и ищите полосу.', 'Out of fuel — combustion stopped; the fans only windmill in the airflow. The aircraft is now a glider with L/D ≈ 17: from 1 km up it covers ≈ 17 km. Hold best-glide speed and look for a runway.') }
+    case 'bellyLanding': return { title: T('На брюхе', 'Belly landing'), body: T('Фюзеляж касается земли: шасси не выпущено или сложилось. Трение металла о бетон тормозит самолёт, но конструкция повреждена.', 'The fuselage is on the ground: the gear was up or collapsed. Metal grinding on concrete slows the aircraft, but the structure is damaged.') }
+    case 'toConfig': return { title: T('T.O CONFIG', 'T.O CONFIG'), body: T('При установке взлётного режима система проверила конфигурацию и нашла ошибку: закрылки не во взлётном положении, выпущены интерцепторы или затянут стояночный тормоз. Без закрылков на полосе 3 км самолёт может не успеть оторваться.', 'When take-off thrust was set the system checked the configuration and found an error: flaps not in a take-off setting, speedbrake out or parking brake set. Without flaps a 3 km runway may not be long enough to lift off.') }
+    case 'engineStrike': return { title: T('Удар двигателем', 'Engine strike'), body: T('Гондола задела землю — слишком большой крен у земли или сложилась стойка. Двигатель повреждён и выключен.', 'A nacelle hit the ground — too much bank close to the ground or a collapsed leg. The engine is damaged and shut down.') }
     case 'tailstrike': return { title: T('Удар хвостом', 'Tail strike'), body: T(
       'Слишком большой тангаж при касании полосы основными колёсами — нижняя часть хвоста задела полосу. Причины: ранний или резкий подъём носа, недостаточная скорость.',
       'Too much pitch while the main wheels were on the runway — the lower tail touched the runway. Causes: rotating too early or too fast, or too little speed.') }
@@ -189,6 +230,22 @@ export function eventText(e: SimEvent, v: number | undefined): Txt | null {
     case 'offRunway': return T('Выкатились с полосы', 'Off the runway')
     case 'flare': return T('50 футов — выравнивание', '50 ft — flare')
     case 'positiveClimb': return T('Положительная вертикальная', 'Positive climb')
+    case 'flapJam': return T('ЗАКРЫЛКИ ЗАКЛИНИЛО — превышена VFE', 'FLAPS JAMMED — VFE exceeded')
+    case 'flapTorn': return T('ЗАКРЫЛОК СОРВАН ПОТОКОМ', 'FLAP TORN OFF')
+    case 'gearDamage': return T('Шасси повреждено — не убирается', 'Gear damaged — will not retract')
+    case 'gearCollapse': return T('Стойка шасси сложилась!', 'Gear leg collapsed!')
+    case 'overstress': return T('ПЕРЕГРУЗКА КОНСТРУКЦИИ', 'STRUCTURAL OVERSTRESS')
+    case 'engineStart': return T(`Запуск двигателя ${v ?? ''}`, `Engine ${v ?? ''} start`)
+    case 'engineRun': return T(`Двигатель ${v ?? ''} на малом газе`, `Engine ${v ?? ''} at idle`)
+    case 'engineFail': return T(`Отказ двигателя ${v ?? ''}`, `Engine ${v ?? ''} failure`)
+    case 'engineStrike': return T(`Двигатель ${v ?? ''} ударился о землю`, `Engine ${v ?? ''} struck the ground`)
+    case 'flameout': return T(`Двигатель ${v ?? ''} заглох — нет топлива`, `Engine ${v ?? ''} flame-out — no fuel`)
+    case 'fuelLow': return T('Мало топлива', 'Fuel low')
+    case 'toConfig': return T('T.O CONFIG — конфигурация не взлётная!', 'T.O CONFIG — not in take-off configuration!')
+    case 'bellyLanding': return T('Касание фюзеляжем', 'Fuselage contact')
+    case 'parked': return T('Рейс завершён', 'Flight complete')
+    case 'pushback': return T('Буксир подключен', 'Tug connected')
+    case 'grass': return T('Колёса на грунте', 'Wheels on the grass')
     default: return null
   }
 }

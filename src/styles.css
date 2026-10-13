@@ -435,3 +435,15 @@ button { font: inherit; color: inherit; }
 .mcard .go { margin-top: auto; font: 600 11px var(--f-mono); letter-spacing: 0.14em; color: var(--accent); }
 @media (max-width: 900px) { .machines-row.sims { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .machines-row.sims { grid-template-columns: 1fr; } }
+.fs-ground { display: flex; flex-direction: column; gap: 6px; }
+.fs-master i { margin-left: 6px; font-style: normal; color: #36e07a; }
+.fs-master.fail i { color: #ff4a3d; }
+.fs-crash p { max-width: 380px; margin: 0; text-align: center; font-size: 13px; line-height: 1.5; color: #d5dde7; }
+.fs-arrived { border-color: rgba(80, 230, 140, 0.6); }
+.fs-arrived b { color: #7cf0a6; }
+.fs-arrived ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+.fs-vdgs { position: absolute; left: 50%; top: 190px; transform: translateX(-50%); z-index: 10; width: 170px; padding: 10px; border-radius: 8px; background: #050607; border: 2px solid #2b2f36; text-align: center; font-family: var(--f-mono); display: flex; flex-direction: column; gap: 4px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.fs-vdgs small { color: #8e9aa8; letter-spacing: 0.2em; font-size: 10px; }
+.fs-vdgs b { color: #ffd23d; font-size: 26px; letter-spacing: 0.06em; }
+.fs-vdgs b.stop { color: #ff4a3d; }
+.fs-vdgs span { color: #ffd23d; font-size: 14px; }

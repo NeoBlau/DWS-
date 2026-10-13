@@ -14,7 +14,32 @@ function snap() {
     ths: s.srf.ths / DEG, lever: s.ctl.lever, rev: s.ctl.rev, floor: s.fbw.alphaFloor, law: s.ctl.law, prot: d.inProt, flare: d.flare, stall: d.stall && s.airborne,
     nz: d.nz ?? 1, dist: (DEST - s.pos.x) / 1852, ab: s.ctl.autobrake, armed: s.ctl.spoilersArmed, wow: d.wow, accel: 0, airborne: s.airborne, crashed: s.crashed,
     lift: d.lift ?? 0, drag: d.drag ?? 0, thrust: (d.thrust?.[0] ?? 0) + (d.thrust?.[1] ?? 0), slat: confAt(s.srf.conf).slat, flap: confAt(s.srf.conf).flap, ever: s.everAirborne,
+    fuel: s.fuel, fuelUsed: s.fuelUsed, eng: s.eng.map((e) => e.state), masters: [...s.ctl.master], park: s.ctl.parkBrake, push: s.ctl.push, stand: d.stand, gs: d.gs ?? 0,
+    arrived: s.arrived, warnings: warnings(), mass: d.mass ?? 0, surface: d.surface ?? 'runway', t: s.t, tdVs: s.touchdownVs,
   }
+}
+/** ECAM-style warnings and memos derived from the aircraft state */
+function warnings() {
+  const s = FS.sim, d = s.d, dm = s.dmg, out: { txt: string; lvl: 'red' | 'amber' | 'green' }[] = []
+  s.eng.forEach((e, i) => { if (e.state === 'failed') out.push({ txt: `ENG ${i + 1} ${e.why === 'fuel' ? 'FLAME OUT' : e.why === 'strike' ? 'DAMAGED' : 'FAIL'}`, lvl: 'red' }) })
+  if (d.stall && s.airborne) out.push({ txt: 'STALL', lvl: 'red' })
+  if (dm.structure > 0) out.push({ txt: `STRUCTURE OVERSTRESS ${Math.round(dm.structure * 100)}%`, lvl: dm.structure > 0.5 ? 'red' : 'amber' })
+  if (dm.flaps === 2) out.push({ txt: 'F/CTL FLAP ATTACH SENSOR — FLAP LOST', lvl: 'red' })
+  else if (dm.flaps === 1) out.push({ txt: 'F/CTL FLAPS JAMMED', lvl: 'amber' })
+  if (dm.gearStuck) out.push({ txt: 'L/G DOORS DAMAGED — GEAR STUCK DOWN', lvl: 'amber' })
+  dm.legs.forEach((c, i) => { if (c) out.push({ txt: `L/G ${['NOSE', 'LEFT', 'RIGHT'][i]} GEAR COLLAPSED`, lvl: 'red' }) })
+  if (dm.tail) out.push({ txt: 'TAIL STRIKE', lvl: 'amber' })
+  if (s.fuel < 1000) out.push({ txt: s.fuel <= 0 ? 'FUEL — TANKS EMPTY' : 'FUEL LO LVL', lvl: s.fuel <= 0 ? 'red' : 'amber' })
+  if (s.airborne && d.ias > (d.confId === '0' ? s.spec.vmo : d.vfe) + 4) out.push({ txt: 'OVERSPEED', lvl: 'red' })
+  if (s.airborne && s.srf.gear < 0.99 && d.ra < 750 && s.ctl.lever < 0.3 && d.vs < 0) out.push({ txt: 'L/G GEAR NOT DOWN', lvl: 'red' })
+  if (!s.everAirborne && s.ctl.lever > 0.8 && (s.srf.confTarget < 2 || s.srf.confTarget > 4)) out.push({ txt: 'CONFIG FLAPS NOT IN T.O CONFIG', lvl: 'red' })
+  if (!s.everAirborne && s.ctl.lever > 0.8 && s.ctl.parkBrake) out.push({ txt: 'CONFIG PARK BRK ON', lvl: 'red' })
+  if (!s.everAirborne && s.ctl.lever > 0.8 && s.ctl.speedbrake > 0.05) out.push({ txt: 'CONFIG SPD BRK NOT RETRACTED', lvl: 'red' })
+  if (s.ctl.parkBrake) out.push({ txt: 'PARK BRK', lvl: 'green' })
+  if (s.ctl.push) out.push({ txt: 'PUSHBACK', lvl: 'green' })
+  if (s.ctl.spoilersArmed && !s.airborne && s.everAirborne === false) out.push({ txt: 'GND SPLRS ARMED', lvl: 'green' })
+  s.eng.forEach((e, i) => { if (e.state === 'starting') out.push({ txt: `ENG ${i + 1} START`, lvl: 'green' }) })
+  return out.slice(0, 6)
 }
 const AC_H = 10 // CG height at rest (ft) so the altimeter reads ~0 on the runway
 export type Snap = ReturnType<typeof snap>
@@ -161,8 +186,8 @@ export function Ecam({ v }: { v: Snap }) {
   const gearCol = v.gear > 0.99 ? C.g : v.gear > 0.01 ? C.r : 'transparent'
   const conf = CONFS[Math.round(v.confPos)]
   return (
-    <svg className="fs-ecam" viewBox="0 0 220 200" role="img" aria-label="Engine and configuration display">
-      <rect width={220} height={200} rx={10} fill="#0b0e13" />
+    <svg className="fs-ecam" viewBox="0 0 220 300" role="img" aria-label="Engine and configuration display">
+      <rect width={220} height={300} rx={10} fill="#0b0e13" />
       <text x={110} y={13} fill="#9aa4b2" fontSize={9} textAnchor="middle" fontFamily="ui-monospace,monospace">N1 %</text>
       <N1Arc x={60} n1={v.n1[0]} egt={v.egt[0]} ff={v.ff[0]} label="1" />
       <N1Arc x={160} n1={v.n1[1]} egt={v.egt[1]} ff={v.ff[1]} label="2" />
@@ -182,6 +207,13 @@ export function Ecam({ v }: { v: Snap }) {
         <text x={14} y={190} fill={v.gnd > 0.5 || v.spl > 0.05 ? C.g : v.armed ? C.c : '#5b6573'} fontSize={9}>{v.gnd > 0.5 ? 'GND SPLR' : v.spl > 0.05 ? 'SPD BRK' : v.armed ? 'SPLR ARM' : 'SPLR'}</text>
         <text x={90} y={190} fill="#9aa4b2" fontSize={9}>THS {v.ths >= 0 ? 'UP' : 'DN'} {Math.abs(v.ths).toFixed(1)}</text>
         <text x={168} y={190} fill={v.ab ? C.c : '#5b6573'} fontSize={9}>{v.ab === 2 ? 'BRK MED' : v.ab === 1 ? 'BRK LO' : 'A/BRK'}</text>
+      </g>
+      <g fontFamily="ui-monospace,monospace" fontSize={9.5}>
+        <line x1={10} x2={210} y1={200} y2={200} stroke="#2a313c" />
+        <text x={14} y={214} fill="#9aa4b2">FOB</text><text x={60} y={214} fill={v.fuel < 1000 ? C.a : C.g}>{Math.round(v.fuel)} KG</text>
+        <text x={130} y={214} fill="#9aa4b2">GW</text><text x={160} y={214} fill={C.g}>{(v.mass / 1000).toFixed(1)} T</text>
+        {v.eng.map((e, i) => <text key={i} x={i ? 130 : 14} y={228} fill={e === 'run' ? C.g : e === 'failed' ? C.r : e === 'starting' ? C.a : '#5b6573'}>{`ENG${i + 1} ${e === 'run' ? 'AVAIL' : e === 'failed' ? 'FAIL' : e === 'starting' ? 'START' : 'OFF'}`}</text>)}
+        {v.warnings.map((w, i) => <text key={i} x={14} y={244 + i * 11} fill={w.lvl === 'red' ? C.r : w.lvl === 'amber' ? C.a : C.g}>{w.txt}</text>)}
       </g>
     </svg>
   )
