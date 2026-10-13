@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { DEST_X, RWY_LEN, RWY_W, AIRPORTS, surfaceAt } from './airports'
+import { createSys, stepSystems, burnFuel, power, ACT, type Sys } from './systems'
 
 /*
  * Flight dynamics model — rigid body, 6 degrees of freedom, for any aircraft described by a Spec.
@@ -30,7 +31,11 @@ const V3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
 /* ------------------------------------------------------------------ aircraft description */
 export interface Conf { id: string; slat: number; flap: number; cl0: number; as: number; cd: number; cm: number; vfe: number }
 export interface Spec {
-  id: 'a320' | 'strizh'
+  id: 'a320' | 'strizh' | 'vortex'
+  arch: 'hyd' | 'electric' // hydraulic + bleed-air systems, or «more-electric» (EHA actuators, electric start, electric packs)
+  wingCap: number // fuel each wing tank holds, kg (the rest goes to the centre tank)
+  fuelArm: number // lateral distance of the wing-tank fuel from the centreline, m
+  crossTie?: boolean // turbo-electric: every fan is fed from a common bus, so losing one core gives no asymmetric thrust
   oew: number; payload: number; fuelMax: number; fuelStart: number // kg
   refMass: number // the struts and inertia are sized for this mass
   S: number; b: number; c: number; iw: number; CLA: number; CD0: number; CDgear: number; e: number
@@ -50,7 +55,7 @@ export interface Spec {
 }
 
 export const A320: Spec = {
-  id: 'a320', oew: 42600, payload: 13500, fuelMax: 18700, fuelStart: 8000, refMass: 64000,
+  id: 'a320', arch: 'hyd', wingCap: 6100, fuelArm: 5, oew: 42600, payload: 13500, fuelMax: 18700, fuelStart: 8000, refMass: 64000,
   S: 122.6, b: 34.1, c: 4.19, iw: 2 * DEG, CLA: 5.6, CD0: 0.0215, CDgear: 0.018, e: 0.78,
   I: V3(1.35e6, 4.3e6, 3.1e6),
   tMax: 120000, eng: [V3(2.5, -1.2, -5.75), V3(2.5, -1.2, 5.75)], ffScale: 1, revFrac: 0.32, tsfc0: 0.0306, idleFF: 280, seats: 180,
@@ -81,7 +86,7 @@ export const A320: Spec = {
  * electric flight-control actuators, Krueger leading edges and double-slotted flaps, T-tail.
  */
 export const STRIZH: Spec = {
-  id: 'strizh', oew: 37800, payload: 13500, fuelMax: 15000, fuelStart: 6500, refMass: 58000,
+  id: 'strizh', arch: 'electric', wingCap: 5200, fuelArm: 6.5, oew: 37800, payload: 13500, fuelMax: 15000, fuelStart: 6500, refMass: 58000,
   S: 118, b: 47.3, c: 2.55, iw: 2.5 * DEG, CLA: 5.9, CD0: 0.0186, CDgear: 0.016, e: 0.86,
   I: V3(2.4e6, 4.6e6, 2.9e6),
   tMax: 100000, eng: [V3(3.03, 1.85, -6.8), V3(3.03, 1.85, 6.8)], ffScale: 1, revFrac: 0.3, tsfc0: 0.0245, idleFF: 220, seats: 180,
@@ -106,7 +111,7 @@ export const STRIZH: Spec = {
   Cm0: 0.03, CmA: -1.5, CmE: 1.3, CmT: 2.7, CmQ: -30,
   Cla: 0.09, ClP: -0.6, Cnr: -0.25, Cnb: 0.15, Cnd: 0.1,
 }
-export const SPECS = { a320: A320, strizh: STRIZH }
+export const SPECS: Record<Spec['id'], Spec> = { a320: A320, strizh: STRIZH, vortex: undefined as unknown as Spec }
 
 /** kept for components written against the A320 only */
 export const AC = { ...A320, mass: A320.refMass }
@@ -162,7 +167,7 @@ export interface Controls {
   master: [boolean, boolean] // engine master switches
   push: boolean // pushback tug connected
   law: Law
-  trim: -1 | 0 | 1 // manual pitch trim (direct law)
+  trim: -1 | 0 | 1 // manual pitch trim (direct law, mechanical back-up)
 }
 export interface Surfaces {
   elev: number; ail: number; rud: number; ths: number
@@ -172,7 +177,7 @@ export interface Surfaces {
   steer: number // nose wheel angle rad
 }
 export type EngState = 'off' | 'starting' | 'run' | 'failed'
-export interface Engine { state: EngState; n1: number; egt: number; tStart: number; why?: string }
+export interface Engine { state: EngState; n1: number; n2: number; egt: number; tStart: number; why?: string; lit: boolean; litT: number; cool: number }
 export interface Damage {
   flaps: 0 | 1 | 2 // ok / jammed / torn on one side
   flapSide: 1 | -1
@@ -199,8 +204,10 @@ export type SimEvent =
   | 'gearUp' | 'gearDown' | 'flaps' | 'groundSpoilers' | 'reverse' | 'stopped' | 'vfe' | 'overspeed' | 'offRunway' | 'flare' | 'v1' | 'vr' | 'positiveClimb'
   | 'flapJam' | 'flapTorn' | 'gearDamage' | 'gearCollapse' | 'overstress' | 'engineStart' | 'engineRun' | 'engineFail' | 'engineStrike' | 'flameout'
   | 'fuelLow' | 'toConfig' | 'parkBrakeOn' | 'bellyLanding' | 'parked' | 'pushback' | 'grass'
+  | 'extTorn' | 'rat' | 'apuStart' | 'apuAvail' | 'apuFail' | 'irAlign' | 'irMoved' | 'irNav' | 'lightOff' | 'startFault' | 'modeNotStart' | 'noPower' | 'imbalance' | 'cabAlt' | 'nwsLost' | 'gravityGear'
 export interface Sim {
   spec: Spec
+  sys: Sys
   t: number
   pos: THREE.Vector3
   vel: THREE.Vector3
@@ -231,9 +238,9 @@ export function defaultControls(): Controls {
 
 export type Start = 'gate' | 'runway' | 'approach' | 'cruise'
 export function createSim(start: Start = 'runway', spec: Spec = A320): Sim {
-  const run = (): Engine => ({ state: 'run', n1: 19.5, egt: 420, tStart: 0 })
+  const run = (): Engine => ({ state: 'run', n1: 19.5, n2: 58, egt: 420, tStart: 0, lit: true, litT: 0, cool: 0 })
   const s: Sim = {
-    spec, t: 0, pos: V3(80, spec.cgLayout.y, 0), vel: V3(0, 0, 0), quat: new THREE.Quaternion(), w: V3(0, 0, 0),
+    spec, sys: createSys(start === 'gate', spec.fuelStart, spec.wingCap), t: 0, pos: V3(80, spec.cgLayout.y, 0), vel: V3(0, 0, 0), quat: new THREE.Quaternion(), w: V3(0, 0, 0),
     n1: [19.5, 19.5], eng: [run(), run()], fuel: spec.fuelStart, ctl: defaultControls(),
     srf: { elev: 0, ail: 0, rud: 0, ths: 0, splL: 0, splR: 0, gndSpl: 0, conf: 0, confTarget: 0, gear: 1, steer: 0 },
     dmg: { flaps: 0, flapSide: 1, gearStuck: false, legs: [false, false, false], structure: 0, tail: false, belly: false },
@@ -245,7 +252,8 @@ export function createSim(start: Start = 'runway', spec: Spec = A320): Sim {
     const st = AIRPORTS[0].stands[1]
     s.pos.set(st.x, spec.cgLayout.y, st.z)
     s.quat.setFromAxisAngle(V3(0, 1, 0), -st.heading)
-    s.eng = [{ state: 'off', n1: 0, egt: 25, tStart: 0 }, { state: 'off', n1: 0, egt: 25, tStart: 0 }]
+    const off = (): Engine => ({ state: 'off', n1: 0, n2: 0, egt: 25, tStart: 0, lit: false, litT: 0, cool: 0 })
+    s.eng = [off(), off()]
     s.n1 = [0, 0]
     Object.assign(s.ctl, { master: [false, false], parkBrake: true })
   } else if (start === 'approach') {
@@ -257,7 +265,7 @@ export function createSim(start: Start = 'runway', spec: Spec = A320): Sim {
     s.quat.setFromEuler(new THREE.Euler(0, 0, th, 'YZX'))
     Object.assign(s.ctl, { flapLever: 3, gearDown: true, lever: 0.42, spoilersArmed: true, autobrake: 1 })
     Object.assign(s.srf, { conf: 4, confTarget: 4, gear: 1, ths: 3.8 * DEG })
-    s.n1 = [55, 55]; s.eng.forEach((e) => { e.n1 = 55 }); s.fuel = 3500; s.airborne = true; s.everAirborne = true; s.fbw.blend = 1
+    s.n1 = [55, 55]; s.eng.forEach((e) => { e.n1 = 55; e.n2 = 78 }); setFuel(s, 3500); s.airborne = true; s.everAirborne = true; s.fbw.blend = 1
   } else if (start === 'cruise') {
     const V = 250 * KT * 1.16, th = 2.2 * DEG
     s.pos.set(9000, 3000, 0)
@@ -265,13 +273,19 @@ export function createSim(start: Start = 'runway', spec: Spec = A320): Sim {
     s.quat.setFromEuler(new THREE.Euler(0, 0, th, 'YZX'))
     Object.assign(s.ctl, { flapLever: 0, gearDown: false, lever: 0.55 })
     Object.assign(s.srf, { conf: 0, confTarget: 0, gear: 0, ths: 0.9 * DEG })
-    s.n1 = [72, 72]; s.eng.forEach((e) => { e.n1 = 72 }); s.fuel = 6500; s.airborne = true; s.everAirborne = true; s.fbw.blend = 1
+    s.n1 = [72, 72]; s.eng.forEach((e) => { e.n1 = 72; e.n2 = 87 }); setFuel(s, 6500); s.sys.cab = 2200; s.airborne = true; s.everAirborne = true; s.fbw.blend = 1
   }
   s.flags.gearLever = s.ctl.gearDown
   derive(s, 0)
   return s
 }
 export const massOf = (s: Sim) => s.spec.oew + s.spec.payload + s.fuel
+/** load fuel: wings first, then the centre tank */
+export function setFuel(s: Sim, kg: number) {
+  const w = Math.min(kg / 2, s.spec.wingCap)
+  s.sys.tank = { L: w, C: Math.max(0, kg - 2 * w), R: w }
+  s.fuel = kg
+}
 
 /* ------------------------------------------------------------------ atmosphere & engines */
 export function isa(h: number) {
@@ -382,11 +396,15 @@ function flyByWire(s: Sim, dt: number) {
   f.blend = approach(f.blend, s.airborne ? 1 : 0, 0.35, dt)
 
   /* ---------- pitch */
+  // the law the computers can actually provide (systems.ts): normal → alternate → direct → mechanical back-up
+  const law = s.sys.law, isNormal = law === 'normal'
+  const pE = power(s, ACT.elev), pA = power(s, ACT.ail), pR = power(s, ACT.rud), pT = power(s, ACT.ths)
   let elevCmd: number
   const direct = c.stickY * 30 * DEG * clamp(sched, 0.35, 1)
-  if (c.law === 'direct') {
-    elevCmd = direct
-    r.ths = clamp(r.ths + c.trim * 0.5 * DEG * dt, -4 * DEG, 13.5 * DEG)
+  if (law === 'direct' || law === 'mech') {
+    // direct law: stick → elevator. Mechanical back-up: no computers at all — only the trim wheel and the rudder pedals
+    elevCmd = law === 'mech' ? 0 : direct
+    r.ths = clamp(r.ths + c.trim * 0.5 * DEG * dt * pT, -4 * DEG, 13.5 * DEG)
     d.inProt = false
   } else {
     const sy = c.stickY
@@ -409,7 +427,7 @@ function flyByWire(s: Sim, dt: number) {
       qCmd = Math.max(qCmd, (nzMin - 1) * gn + qTurn + 1.5 * Math.max(0, nzMin + 0.1 - d.nz) * gn)
     }
     // α-protection: above α-prot the stick commands angle of attack, never beyond α-max
-    const prot = d.alpha > d.alphaProt - 0.6 * DEG && s.airborne
+    const prot = isNormal && d.alpha > d.alphaProt - 0.6 * DEG && s.airborne
     if (prot) {
       const aCmd = d.alphaProt + Math.max(0, sy) * (d.alphaMax - d.alphaProt)
       qCmd = Math.min(qCmd, 1.1 * (aCmd - d.alpha))
@@ -417,15 +435,16 @@ function flyByWire(s: Sim, dt: number) {
     }
     d.inProt = prot && d.alpha > d.alphaProt - 0.2 * DEG
     // α-floor: automatic TOGA thrust when α keeps rising inside the protection
-    if (s.airborne && d.ra > 100 && d.alpha > d.alphaProt + 0.5 * (d.alphaMax - d.alphaProt) && !f.alphaFloor) {
+    if (isNormal && s.airborne && d.ra > 100 && d.alpha > d.alphaProt + 0.5 * (d.alphaMax - d.alphaProt) && !f.alphaFloor) {
       f.alphaFloor = true; f.floorLever = c.lever; event(s, 'alphaFloor')
     }
     if (f.alphaFloor && Math.abs(c.lever - f.floorLever) > 0.05) f.alphaFloor = false
-    // pitch-attitude protection +30° / −15°
-    qCmd = Math.min(qCmd, 0.8 * (30 * DEG - d.theta))
-    qCmd = Math.max(qCmd, 0.8 * (-15 * DEG - d.theta))
-    // high-speed protection: gentle nose-up above VMO + 6 kt
-    if (d.ias > sp.vmo + 6) qCmd += 0.004 * (d.ias - sp.vmo - 6)
+    // pitch-attitude protection +30° / −15° and high-speed protection (normal law only)
+    if (isNormal) {
+      qCmd = Math.min(qCmd, 0.8 * (30 * DEG - d.theta))
+      qCmd = Math.max(qCmd, 0.8 * (-15 * DEG - d.theta))
+      if (d.ias > sp.vmo + 6) qCmd += 0.004 * (d.ias - sp.vmo - 6)
+    }
     // flare mode below 50 ft: the law memorises the attitude and slowly lowers the nose — the pilot must flare
     if (s.airborne && d.ra < 50 && d.vs < 0 && s.srf.gear > 0.99) {
       if (!d.flare) { d.flare = true; f.flareTheta = d.theta; f.flareT = 0; event(s, 'flare') }
@@ -441,17 +460,18 @@ function flyByWire(s: Sim, dt: number) {
     elevCmd = direct * (1 - b) + normal * b
     // auto-trim: the stabiliser slowly takes over the elevator's load so stick-free flight is trimmed
     if (s.airborne && f.blend > 0.9 && !d.inProt && !d.flare && d.nz > 0.5 && d.nz < 1.3) {
-      r.ths = clamp(r.ths + clamp(0.45 * r.elev, -0.7 * DEG, 0.7 * DEG) * dt, -4 * DEG, 13.5 * DEG)
+      r.ths = clamp(r.ths + clamp(0.45 * r.elev, -0.7 * DEG, 0.7 * DEG) * dt * pT, -4 * DEG, 13.5 * DEG)
     }
   }
   // take-off trim: on the ground the stabiliser is set from the configuration (the crew enters it in the FMS)
-  if (!s.everAirborne && !s.airborne) r.ths = approach(r.ths, (s.srf.confTarget >= 2 ? 0.2 : -0.4) * DEG, 1 * DEG, dt)
-  r.elev = approach(r.elev, clamp(elevCmd, -17 * DEG, 30 * DEG), 40 * DEG, dt)
+  if (!s.everAirborne && !s.airborne) r.ths = approach(r.ths, (s.srf.confTarget >= 2 ? 0.2 : -0.4) * DEG, 1 * DEG * pT, dt)
+  // an actuator with no hydraulic pressure cannot hold its surface: it floats back with the airflow
+  r.elev = pE > 0 ? approach(r.elev, clamp(elevCmd, -17 * DEG, 30 * DEG), 40 * DEG * pE, dt) : approach(r.elev, 0, 3 * DEG, dt)
 
   /* ---------- roll */
   let ailCmd: number
-  if (c.law === 'direct' || !s.airborne) {
-    ailCmd = c.stickX * 25 * DEG * clamp(sched, 0.3, 1)
+  if (law !== 'normal' || !s.airborne) {
+    ailCmd = law === 'mech' ? 0 : c.stickX * 25 * DEG * clamp(sched, 0.3, 1)
     f.pInt = 0; f.holdP = false
   } else {
     let pCmd: number
@@ -470,19 +490,22 @@ function flyByWire(s: Sim, dt: number) {
     f.pInt = clamp(f.pInt + pe * dt, -0.4, 0.4)
     ailCmd = ((2.4 * pe + 1.2 * f.pInt) * sched) * f.blend + c.stickX * 25 * DEG * (1 - f.blend)
   }
-  r.ail = approach(r.ail, clamp(ailCmd, -25 * DEG, 25 * DEG), 60 * DEG, dt)
+  r.ail = pA > 0 ? approach(r.ail, clamp(ailCmd, -25 * DEG, 25 * DEG), 60 * DEG * pA, dt) : approach(r.ail, 0, 3 * DEG, dt)
 
   /* ---------- yaw: pedals + yaw damper + turn coordination */
   const maxRud = clamp(25 - (d.ias - 160) * 0.098, 3.5, 25) * DEG
   let rudCmd = c.pedal * maxRud
-  if (c.law === 'normal' && s.airborne) {
+  if ((law === 'normal' || law === 'alternate') && s.airborne) {
     const rTurn = gn * Math.sin(d.phi) * Math.cos(d.theta)
     rudCmd += (-0.9 * (d.r - rTurn) + 1.4 * d.beta) * f.blend
   }
-  r.rud = approach(r.rud, clamp(rudCmd, -maxRud, maxRud), 40 * DEG, dt)
-  // nose-wheel steering: tiller authority at taxi speed, pedals only (±6°) at speed, up to 75° when towed
+  r.rud = pR > 0 ? approach(r.rud, clamp(rudCmd, -maxRud, maxRud), 40 * DEG * pR, dt) : approach(r.rud, 0, 3 * DEG, dt)
+  // nose-wheel steering: tiller authority at taxi speed, pedals only (±6°) at speed, up to 75° when towed.
+  // It is driven by the yellow hydraulic system (A320) — no yellow pressure, no steering (the tug steers by itself)
   const steerMax = c.push ? 75 : d.gs < 12 ? 70 : d.gs < 30 ? 30 : 6
-  r.steer = approach(r.steer, (s.dmg.legs[0] ? 0 : c.pedal) * steerMax * DEG, 25 * DEG, dt)
+  const nws = c.push ? 1 : power(s, ACT.nws)
+  if (!nws && Math.abs(c.pedal) > 0.5 && !s.airborne && d.gs > 1) event(s, 'nwsLost')
+  r.steer = approach(r.steer, (s.dmg.legs[0] || !nws ? 0 : c.pedal) * steerMax * DEG, 25 * DEG, dt)
 }
 
 /* ------------------------------------------------------------------ systems: flaps, gear, spoilers, brakes, engines, damage */
@@ -496,7 +519,9 @@ function systems(s: Sim, dt: number) {
   }
   if (dm.flaps === 0) {
     if (tgt !== r.confTarget) { r.confTarget = tgt; event(s, 'flaps', tgt) }
-    r.conf = approach(r.conf, r.confTarget, 0.14, dt)
+    // slats on green + blue, flaps on green + yellow: one system lost = half speed, both = frozen
+    const pF = power(s, ACT.flap), pS = power(s, ACT.slat)
+    r.conf = approach(r.conf, r.confTarget, 0.14 * (pF + pS) / 2, dt)
   }
   // flaps beyond their placard speed: first the actuators jam, much faster and a panel tears away
   if (r.conf > 0.3 && s.airborne) {
@@ -516,22 +541,28 @@ function systems(s: Sim, dt: number) {
     s.flags.gearLever = c.gearDown
   }
   if (r.gear > 0.05 && d.ias > sp.vle + 20 && s.airborne && !dm.gearStuck) { dm.gearStuck = true; c.gearDown = true; event(s, 'gearDamage') }
-  r.gear = approach(r.gear, gearTgt, 1 / 9, dt)
+  // green system raises and lowers the gear; without it the gear can only free-fall down under gravity
+  const pG = power(s, ACT.gear)
+  if (gearTgt === 1 && pG === 0 && r.gear < 0.99 && !s.flags.gravGear) { s.flags.gravGear = true; event(s, 'gravityGear') }
+  if (pG > 0) s.flags.gravGear = false
+  r.gear = approach(r.gear, gearTgt, gearTgt ? (pG > 0 ? pG / 9 : 1 / 25) : pG / 9, dt)
 
   /* ground spoilers: armed + both mains on the ground + levers at idle (or reverse) */
   const gndCond = d.mainsOn && (c.lever < 0.05 || c.rev > 0) && d.gs > 40
   const deploy = (c.spoilersArmed || c.rev > 0) && gndCond
   if (deploy && r.gndSpl < 0.05) event(s, 'groundSpoilers')
-  r.gndSpl = approach(r.gndSpl, deploy || (r.gndSpl > 0.5 && d.mainsOn && c.lever < 0.05 && d.gs > 5) ? 1 : 0, 1.5, dt)
+  const pSp = power(s, ACT.spl)
+  r.gndSpl = approach(r.gndSpl, deploy || (r.gndSpl > 0.5 && d.mainsOn && c.lever < 0.05 && d.gs > 5) ? 1 : 0, 1.5 * pSp, dt)
   const sb = s.airborne ? c.speedbrake * (d.inProt ? 0 : 1) : c.speedbrake * 0.5
   const roll = clamp((Math.abs(r.ail) / (25 * DEG) - 0.25) / 0.75, 0, 1)
-  r.splL = approach(r.splL, clamp(Math.max(r.gndSpl, sb * 0.6 + (r.ail < 0 ? roll : 0)), 0, 1), 1.4, dt)
-  r.splR = approach(r.splR, clamp(Math.max(r.gndSpl, sb * 0.6 + (r.ail > 0 ? roll : 0)), 0, 1), 1.4, dt)
+  r.splL = approach(r.splL, pSp ? clamp(Math.max(r.gndSpl, sb * 0.6 + (r.ail < 0 ? roll : 0)), 0, 1) : 0, 1.4 * Math.max(pSp, 0.2), dt)
+  r.splR = approach(r.splR, pSp ? clamp(Math.max(r.gndSpl, sb * 0.6 + (r.ail > 0 ? roll : 0)), 0, 1) : 0, 1.4 * Math.max(pSp, 0.2), dt)
   if (c.rev > 0 && (!d.mainsOn || c.lever > 0.05)) c.rev = 0
 
   /* autobrake */
+  // autobrake works through the normal (green, anti-skid) brakes only
   if (c.autobrake && r.gndSpl > 0.8 && d.gs > 5) f.abActive = true
-  if (c.brake > 0.3 || d.gs < 3 || c.lever > 0.1) f.abActive = false
+  if (c.brake > 0.3 || d.gs < 3 || c.lever > 0.1 || power(s, 'G') === 0) f.abActive = false
   if (f.abActive) f.abBrake = clamp(f.abBrake + ((c.autobrake === 2 ? 3.0 : 1.7) - d.decel) * 0.6 * dt, 0, 1)
   else f.abBrake = approach(f.abBrake, 0, 2, dt)
 
@@ -552,10 +583,16 @@ function systems(s: Sim, dt: number) {
   if (d.nz > nzLim * 1.5 || d.nz < -1.5 * 1.5 || dm.structure >= 1) crash(s, 'structure')
   if (d.ias > sp.vmo + 45 || d.mach > sp.mmo + 0.07) crash(s, 'flutter')
 
-  /* fuel */
-  const burn = ((d.ff[0] + d.ff[1]) / 3600) * dt
-  s.fuel = Math.max(0, s.fuel - burn); s.fuelUsed += burn
+  /* fuel: burnt from the tank each engine is actually fed from */
+  const apuFF = s.sys.apu.state === 'avail' || s.sys.apu.state === 'cooldown' || (s.sys.apu.state === 'starting' && s.sys.apu.n > 7) ? 120 : 0
+  const burnt = burnFuel(s, d.ff, apuFF, dt)
+  const tk = s.sys.tank
+  s.fuel = tk.L + tk.C + tk.R; s.fuelUsed += burnt
   if (s.fuel < 1000 && !s.flags.fuelLow) { s.flags.fuelLow = true; event(s, 'fuelLow') }
+  if (Math.abs(tk.L - tk.R) > 1500 && !s.flags.imb) { s.flags.imb = true; event(s, 'imbalance') }
+  if (Math.abs(tk.L - tk.R) < 800) s.flags.imb = false
+  if (s.sys.cab > 9550 && !s.flags.cab) { s.flags.cab = true; event(s, 'cabAlt') }
+  if (s.sys.cab < 9000) s.flags.cab = false
 
   /* pushback and parking brake */
   if (c.push && (d.gs > 6 || s.airborne || c.lever > 0.2)) c.push = false
@@ -569,6 +606,7 @@ export function step(s: Sim, dt = H) {
   if (s.crashed) return
   const c = s.ctl, r = s.srf, d = s.d, sp = s.spec, dm = s.dmg
   derive(s, dt)
+  stepSystems(s, dt)
   flyByWire(s, dt)
   systems(s, dt)
   const mass = d.mass, W = d.weight, ms = mass / sp.refMass
@@ -625,41 +663,87 @@ export function step(s: Sim, dt = H) {
 
   /* ---------- engines: start, run, fail, flame-out */
   const atm = isa(s.pos.y)
+  const y = s.sys, elecArch = sp.arch === 'electric'
   const idle = s.airborne ? N1_IDLE_FLT : N1_IDLE_GND
   const lever = s.fbw.alphaFloor ? 1 : c.lever
   const tgtRun = c.rev === 2 ? N1_MAXREV : c.rev === 1 ? N1_IDLE_GND + 6 : leverN1(lever, idle)
-  const windmill = Math.min(18, d.ias * 0.07) // an unpowered fan still turns in the airflow
+  const windN2 = Math.min(30, d.ias * 0.09) // an unpowered core still turns in the airflow
+  // the starter: compressed air from the APU / another engine (A320) or the electric starter-generator (more-electric)
+  const starter = elecArch ? (y.ac[0] || y.ac[1] ? 1 : 0) : clamp((y.bleed - 12) / 22, 0, 1)
+  const ign = y.sw.engMode === 'start' && y.dcEss
   for (let i = 0; i < 2; i++) {
     const e = s.eng[i]
     const master = c.master[i]
-    if (e.state === 'off' && master && s.fuel > 0) { e.state = 'starting'; e.tStart = s.t; event(s, 'engineStart', i + 1) }
-    if ((e.state === 'run' || e.state === 'starting') && !master) e.state = 'off'
-    if ((e.state === 'run' || e.state === 'starting') && s.fuel <= 0) { e.state = 'failed'; e.why = 'fuel'; event(s, 'flameout', i + 1) }
-    if (e.state === 'failed' && !master && s.fuel > 0 && e.why === 'fuel') e.state = 'off'
-    let tgt: number, k: number
-    if (e.state === 'run') { tgt = tgtRun; k = tgt > e.n1 ? (e.n1 < 50 ? 0.2 : 0.5) : 0.45 }
-    else if (e.state === 'starting') {
-      // air starter spins the core; fuel and ignition at ≈ 6 s; self-sustaining by ≈ 18 s
+    const fed = y.feed[i] !== ''
+    e.cool = Math.max(0, e.cool - dt)
+    // start (or in-flight relight): master ON with the mode selector at IGN/START and the FADEC powered.
+    // After an aborted start the FADEC waits until the master is cycled OFF → ON.
+    const restartable = e.state === 'off' || (e.state === 'failed' && e.why !== 'strike')
+    if (!master) s.flags['ab' + i] = false
+    if (restartable && master && y.sw.engMode === 'start' && y.dcEss && e.cool === 0 && !s.flags['ab' + i]) {
+      e.state = 'starting'; e.tStart = s.t; e.lit = false; y.startFault[i] = ''; event(s, 'engineStart', i + 1)
+    }
+    if (master && !s.flags['m' + i] && e.state === 'off') event(s, !y.dcEss ? 'noPower' : 'modeNotStart', i + 1)
+    s.flags['m' + i] = master
+    if ((e.state === 'run' || e.state === 'starting') && !master) { e.state = 'off'; e.lit = false }
+    if (e.state === 'failed' && !master && e.why !== 'strike') { e.state = 'off'; e.lit = false }
+    if ((e.state === 'run' || (e.state === 'starting' && e.lit)) && !fed) { e.state = 'failed'; e.why = 'fuel'; e.lit = false; event(s, 'flameout', i + 1) }
+    let n1T: number, k: number
+    if (e.state === 'run') {
+      n1T = tgtRun; k = n1T > e.n1 ? (e.n1 < 50 ? 0.2 : 0.5) : 0.45
+      e.n1 += (n1T - e.n1) * Math.min(1, k * dt)
+      e.n2 = 58 + (e.n1 - N1_IDLE_GND) * 0.55
+    } else if (e.state === 'starting') {
       const ts = s.t - e.tStart
-      tgt = ts < 6 ? 6 : N1_IDLE_GND + 0.5; k = ts < 6 ? 0.5 : 0.18
-      if (e.n1 > N1_IDLE_GND - 0.3) { e.state = 'run'; event(s, 'engineRun', i + 1) }
-    } else { tgt = windmill; k = 0.12 }
-    e.n1 += (tgt - e.n1) * Math.min(1, k * dt)
+      if (!e.lit) {
+        // dry crank: the starter spins the HP rotor; fuel and ignition at 16 % N2
+        const n2T = Math.max(26 * starter, windN2)
+        e.n2 += (n2T - e.n2) * Math.min(1, 0.35 * dt)
+        if (e.n2 >= 16 && fed && ign) { e.lit = true; e.litT = s.t; event(s, 'lightOff', i + 1) }
+        if (ts > 45) {
+          // the FADEC aborts a start that does not light or hangs (too little bleed pressure, no fuel, no ignition)
+          e.state = 'off'; e.cool = 30; s.flags['ab' + i] = true
+          y.startFault[i] = e.n2 < 16 ? (elecArch ? 'NO STARTER POWER' : 'START VALVE — BLEED PRESS LO') : !fed ? 'NO FUEL FEED' : 'IGN FAULT'
+          event(s, 'startFault', i + 1)
+        }
+      } else {
+        // after light-off the turbine accelerates the rotor, helped by the starter up to 50 % N2
+        e.n2 += (1.7 + 1.1 * (e.n2 < 50 ? starter : 0)) * dt * (e.n2 < 58 ? 1 : 0)
+        if (e.n2 < 30 && s.t - e.litT > 25) { e.state = 'off'; e.cool = 30; s.flags['ab' + i] = true; y.startFault[i] = 'HUNG START'; event(s, 'startFault', i + 1) }
+        if (e.egt > 725) { e.state = 'off'; e.cool = 40; s.flags['ab' + i] = true; y.startFault[i] = 'EGT OVERLIMIT — HOT START'; event(s, 'startFault', i + 1) }
+        if (e.n2 >= 57.5) { e.state = 'run'; e.n2 = 58; event(s, 'engineRun', i + 1) }
+      }
+      e.n1 = Math.max(0, (e.n2 - 15) * 0.45)
+    } else {
+      e.n2 += (windN2 - e.n2) * Math.min(1, 0.12 * dt)
+      e.n1 += (windN2 * 0.6 - e.n1) * Math.min(1, 0.12 * dt)
+    }
     s.n1[i] = e.n1
     const running = e.state === 'run'
-    const T = running || (e.state === 'starting' && s.t - e.tStart > 6) ? thrustOf(sp, e.n1, running && c.rev > 0, atm.sigma, d.mach) : 0
+    e.lit = running || (e.state === 'starting' && e.lit)
+    // reversers are moved hydraulically: engine 1 by green, engine 2 by yellow (electrically on the more-electric designs)
+    const revOK = power(s, i === 0 ? 'G' : 'Y') > 0
+    const T = e.lit ? thrustOf(sp, e.n1, running && c.rev > 0 && revOK, atm.sigma, d.mach) : 0
     d.thrust[i] = T
     const fT = clamp((e.n1 - N1_IDLE_GND) / (96 - N1_IDLE_GND), 0, 1)
-    const lit = running || (e.state === 'starting' && s.t - e.tStart > 6)
-    const egtT = lit ? 420 + 430 * fT + (e.state === 'starting' ? 260 * Math.exp(-((s.t - e.tStart - 9) ** 2) / 6) : 0) : 25 + Math.max(0, e.egt - 25) * 0.995
+    // EGT: light-off peak; opening the thrust lever during a start over-fuels the engine — a hot start
+    const egtT = e.lit ? 420 + 430 * fT + (e.state === 'starting' ? 270 * Math.exp(-((s.t - e.litT - 5) ** 2) / 8) + 520 * c.lever : 0) : 25 + Math.max(0, e.egt - 25) * 0.995
     e.egt += (egtT - e.egt) * Math.min(1, dt * 0.8)
     d.egt[i] = e.egt
     // fuel flow follows the thrust actually produced: ṁ = T · TSFC, with TSFC rising with Mach
-    d.ff[i] = lit ? Math.max(sp.idleFF * Math.max(0.6, atm.sigma), Math.abs(T) * sp.tsfc0 * (1 + 0.85 * d.mach)) * sp.ffScale : 0
-    _tmp.set(T, 0, 0)
+    d.ff[i] = e.lit ? Math.max(sp.idleFF * Math.max(0.6, atm.sigma) * (e.state === 'starting' ? 0.6 : 1), Math.abs(T) * sp.tsfc0 * (1 + 0.85 * d.mach)) * sp.ffScale : 0
+  }
+  // turbo-electric designs share all fans on one bus: the thrust is the same on both sides whatever core runs
+  if (sp.crossTie && d.thrust[0] >= 0 && d.thrust[1] >= 0) { const m = (d.thrust[0] + d.thrust[1]) / 2; d.thrust[0] = m; d.thrust[1] = m }
+  for (let i = 0; i < 2; i++) {
+    _tmp.set(d.thrust[i], 0, 0)
     _f.add(_tmp)
     _m.add(_tmp2.copy(sp.eng[i]).cross(_tmp))
   }
+  // uneven wing tanks move the centre of gravity sideways: the heavy wing wants to go down
+  const tk = y.tank, zc = (sp.fuelArm * (tk.R - tk.L)) / mass
+  _tmp.set(0, -W, 0).applyQuaternion(_qi)
+  _m.add(_tmp2.set(0, 0, zc).cross(_tmp))
   if (c.rev > 0 && !s.flags.rev) event(s, 'reverse')
   s.flags.rev = c.rev > 0
 
@@ -670,7 +754,13 @@ export function step(s: Sim, dt = H) {
   /* ---------- landing gear & hard points */
   const C = contacts(sp)
   let mainsOn = 0, noseOn = false, wowAny = false
-  const brake = Math.max(c.brake, s.fbw.abBrake, c.parkBrake ? 1 : 0)
+  // brakes: normal (green, with anti-skid) → alternate (yellow) → accumulator (a few full applications)
+  const pGb = power(s, 'G'), pYb = power(s, 'Y')
+  const pedalBrake = Math.max(c.brake, s.fbw.abBrake)
+  let brakeAvail = pGb > 0 || pYb > 0 ? 1 : y.accu > 1000 ? 1 : y.accu / 1000
+  if (pGb === 0 && pYb === 0 && pedalBrake > 0 && d.gs > 0.5) y.accu = Math.max(0, y.accu - pedalBrake * 350 * dt)
+  if (sp.arch === 'electric') brakeAvail = y.dcEss ? 1 : 0 // electric brakes
+  const brake = Math.max(pedalBrake * brakeAvail, c.parkBrake && (pYb > 0 || y.accu > 800 || sp.arch === 'electric') ? 1 : 0)
   _fwd.set(1, 0, 0).applyQuaternion(s.quat)
   _roll.copy(_fwd); _roll.y = 0; _roll.normalize()
   d.struts = [0, 0, 0]

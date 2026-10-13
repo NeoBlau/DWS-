@@ -9,6 +9,7 @@ import { useT, useLang, T, type Txt } from '../i18n'
 import { A320 } from './Aircraft'
 import { StrizhModel } from './Strizh'
 import { DesignPanel } from './Design'
+import { OverheadPanel } from './Overhead'
 import { EYE, LOOK } from './Cockpit'
 import { World } from './World'
 import { Pfd, Ecam, ForceLegend, useSnap, type Snap } from './Hud'
@@ -119,6 +120,11 @@ function useHighlight(): Ctl | null {
   const guide = useFlight((s) => s.guide)
   const step = useGuideStep()
   return guide && step ? step.ctl : null
+}
+function useHighlightSw(): string | null {
+  const guide = useFlight((s) => s.guide)
+  const step = useGuideStep()
+  return guide && step?.sw ? step.sw : null
 }
 function useGuideStep() {
   const start = useFlight((s) => s.start)
@@ -289,6 +295,7 @@ function NarrationPanel() {
         else if (e === 'stall') tp = 'stall'
         else if (e === 'groundSpoilers') tp = 'groundSpoilers'
         else if (e === 'tailstrike') tp = 'tailstrike'
+        else if (['apuStart', 'apuAvail', 'irAlign', 'irMoved', 'startFault', 'modeNotStart', 'noPower', 'extTorn', 'rat', 'nwsLost', 'gravityGear', 'imbalance', 'cabAlt', 'lightOff'].includes(e)) tp = e as Topic
         else if (['engineStart', 'flapJam', 'flapTorn', 'gearDamage', 'gearCollapse', 'overstress', 'engineFail', 'flameout', 'bellyLanding', 'toConfig', 'engineStrike', 'pushback'].includes(e)) tp = e as Topic
       }
       lastEv.current = s.events.length
@@ -334,7 +341,7 @@ function Toasts() {
       const add: { id: number; txt: Txt; bad: boolean }[] = []
       for (let i = seen.current; i < ev.length; i++) {
         const txt = eventText(ev[i].e, ev[i].v)
-        if (txt) add.push({ id: ev[i].t * 1000 + i, txt, bad: ['crash', 'stall', 'tailstrike', 'hardLanding', 'vfe', 'overspeed', 'offRunway', 'flapJam', 'flapTorn', 'gearDamage', 'gearCollapse', 'overstress', 'engineFail', 'flameout', 'engineStrike', 'toConfig', 'bellyLanding', 'fuelLow'].includes(ev[i].e) })
+        if (txt) add.push({ id: ev[i].t * 1000 + i, txt, bad: ['crash', 'stall', 'tailstrike', 'hardLanding', 'vfe', 'overspeed', 'offRunway', 'flapJam', 'flapTorn', 'gearDamage', 'gearCollapse', 'overstress', 'engineFail', 'flameout', 'engineStrike', 'toConfig', 'bellyLanding', 'fuelLow', 'startFault', 'irMoved', 'noPower', 'extTorn', 'rat', 'nwsLost', 'imbalance', 'cabAlt', 'apuFail'].includes(ev[i].e) })
       }
       seen.current = ev.length
       if (add.length) setList((l) => [...l, ...add].slice(-3))
@@ -380,6 +387,7 @@ function useKeyboard() {
         case 'Space': ui.set({ paused: !ui.paused }); e.preventDefault(); break
         case 'KeyC': { const m: CamMode[] = ['chase', 'side', 'cockpit', 'wing', 'tower', 'orbit']; ui.set({ cam: m[(m.indexOf(ui.cam) + 1) % m.length] }); break }
         case 'KeyH': ui.set({ forces: !ui.forces }); break
+        case 'KeyO': ui.set({ overhead: !ui.overhead }); break
         case 'KeyP': c.parkBrake = !c.parkBrake; break
         case 'KeyT': if (!FS.sim.airborne) c.push = !c.push; break
         case 'KeyM': { const on = !(c.master[0] && c.master[1]); c.master = [on, on]; break }
@@ -404,6 +412,7 @@ export function FlightSim() {
   const quality = useApp((s) => s.quality)
   const ui = useFlight()
   const v = useSnap(15)
+  const hl = useHighlight(), hlSw = useHighlightSw()
   const orbit = useRef<OrbitImpl | null>(null)
   useKeyboard()
   useMouseLook()
@@ -449,9 +458,11 @@ export function FlightSim() {
           <button className={`btn sm ${ui.ac === 'strizh' ? 'on' : ''}`} onClick={() => { ui.set({ ac: 'strizh' }); resetSim(ui.start) }}>{t(T('Стриж-180', 'Strizh-180'))}</button>
           <button className="btn sm" onClick={() => ui.set({ design: true })}>{t(T('Проект ⓘ', 'Design ⓘ'))}</button>
         </div>
+        <button className={`btn sm ${ui.overhead ? 'on' : ''} ${hl === 'overhead' && !ui.overhead ? 'fs-hl' : ''}`} onClick={() => ui.set({ overhead: !ui.overhead })}>{t(T('Верхний пульт (O)', 'Overhead (O)'))}</button>
         <div className="seg xp-lang"><button className={lang === 'ru' ? 'on' : ''} onClick={() => setLang('ru')}>RU</button><button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button></div>
       </header>
       {ui.design && <DesignPanel onClose={() => ui.set({ design: false })} />}
+      <OverheadPanel v={v} hl={hlSw} />
       <NarrationPanel />
       <GuidePanel />
       <Toasts />

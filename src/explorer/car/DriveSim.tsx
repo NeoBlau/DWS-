@@ -12,7 +12,7 @@ import type { CarLayout } from '../../models/carLayout'
 import type { Runtime } from '../../models/runtime'
 import { useT, useLang, T, type Txt } from '../i18n'
 import { pollPad, BTN, PAD } from '../gamepad'
-import { CAR_SPECS, TRACK, createCar, stepCar, H, G, type Car, type DriveMode } from './carPhysics'
+import { CAR_SPECS, TRACK, createCar, stepCar, selectGear, requestMode, warmUp, H, G, type Car, type DriveMode, type Hardware } from './carPhysics'
 
 /*
  * Driving simulator on a proving ground. The physics (carPhysics.ts) runs at 240 Hz; this file draws the
@@ -46,7 +46,7 @@ function applyInputs(c: Car, dt: number) {
     if (P[BTN.RB]) { k.manual = true; k.shiftReq = 1 }
     if (P[BTN.LB]) { k.manual = true; k.shiftReq = -1 }
     if (P[BTN.X]) k.ignition = !k.ignition
-    if (P[BTN.BACK]) k.select = ({ P: 'R', R: 'N', N: 'D', D: 'P' } as const)[k.select]
+    if (P[BTN.BACK]) selectGear(c, ({ P: 'R', R: 'N', N: 'D', D: 'P' } as const)[k.select])
     if (P[BTN.Y]) cycleCam()
     if (P[BTN.START]) useDrive.getState().set({ paused: !useDrive.getState().paused })
     if (P[BTN.B]) k.manual = !k.manual
@@ -238,6 +238,7 @@ function snap() {
     kmh: c.u * 3.6, rpm: c.rpm, gear: c.gear, sel: c.ctl.select, manual: c.ctl.manual, mode: c.ctl.mode, boost: c.boost, on: c.engineOn, ign: c.ctl.ignition,
     ax: c.ax / G, ay: c.ay / G, frontPct: (fzFront / fzAll) * 100, abs: c.wheels.some((w) => w.abs), tcs: c.tcs, esc: c.esc, lockup: c.lockup,
     absOn: c.ctl.abs, tcsOn: c.ctl.tcs, escOn: c.ctl.esc, surface: c.wheels[0].surface, aF, aR, beta: Math.atan2(c.v, Math.max(0.5, Math.abs(c.u))),
+    hw: JSON.parse(JSON.stringify(c.hw)) as Hardware, prot: c.ctl.prot, partTime: sp.partTime, byWire: sp.byWire, diesel: sp.diesel, t: c.t, evs: c.events.slice(-6),
     t100: c.timer.t100, d400: c.timer.d400, rolled: c.rolled, lift: c.wheels.some((w) => w.lift), ssf: sp.track / (2 * sp.cgH), torque: c.wheelTorque, L,
     redline: sp.redline, awd: sp.awd, events: c.events.slice(-1)[0], throttle: c.ctl.throttle, brake: c.ctl.brake,
   }
@@ -292,6 +293,9 @@ function GMeter({ v }: { v: Snap }) {
 /* ------------------------------------------------------------------ narration */
 function narrate(v: Snap): { title: Txt; body: Txt } {
   const f = (n: number, d = 0) => n.toFixed(d)
+  // the hardware just told us something: explain it first
+  for (let i = v.evs.length - 1; i >= 0; i--) { const e = v.evs[i]; if (v.t - e.t < 8 && HEALTH[e.e]) return HEALTH[e.e](v) }
+  if (v.on && v.hw.oil < 50 && v.rpm > v.redline * 0.5) return HEALTH.coldRev(v)
   if (v.rolled) return { title: T('Опрокидывание', 'Rollover'), body: T(`Боковое ускорение превысило запас устойчивости: у этой машины t/2h ≈ ${f(v.ssf, 2)} — при таком ускорении в g внутренние колёса отрываются. У высокого внедорожника запас меньше, чем у седана; ESC как раз ограничивает поворот, чтобы этого не случилось.`, `Lateral acceleration exceeded the stability margin: this car's t/2h ≈ ${f(v.ssf, 2)} — at that many g the inner wheels lift. A tall SUV has less margin than a sedan; ESC limits the turn to prevent exactly this.`) }
   if (!v.ign) return { title: T('Машина заглушена', 'Engine off'), body: T('Нажмите «Зажигание» (клавиша I или X на геймпаде): стартер раскрутит коленвал, пойдёт впрыск, и двигатель выйдет на холостой ход. Затем селектор в D (клавиша D).', 'Press Ignition (key I or X on a gamepad): the starter cranks the engine, fuel is injected and it settles at idle. Then put the selector in D (key D).') }
   if (v.lift) return { title: T('Колесо оторвалось!', 'A wheel lifted!'), body: T(`Боковое ускорение ${f(Math.abs(v.ay), 2)} g переносит вес наружу: внутренние колёса почти не нагружены. Порог опрокидывания для этой машины ≈ ${f(v.ssf, 2)} g (t/2h).`, `Lateral acceleration of ${f(Math.abs(v.ay), 2)} g moves the weight outward: the inner wheels are almost unloaded. This car's rollover threshold is ≈ ${f(v.ssf, 2)} g (t/2h).`) }
@@ -308,12 +312,65 @@ function narrate(v: Snap): { title: Txt; body: Txt } {
   return { title: T('Полигон', 'Proving ground'), body: T('Прямая для замеров справа (0–100 км/ч и 400 м засекаются сами), мокрый круг, лёд, гравий и змейка из конусов. Кольца под колёсами показывают, сколько сцепления использует каждая шина: зелёный — запас, жёлтый — у предела, красный — скользит, голубой — работает ABS.', 'The timing strip is to the right (0–100 km/h and 400 m are timed automatically), plus a wet circle, ice, gravel and a cone slalom. Rings under the wheels show how much grip each tyre uses: green — margin, yellow — near the limit, red — sliding, blue — ABS.') }
 }
 
+/* ------------------------------------------------------------------ what the hardware says, and why */
+const HEALTH: Record<string, (v: Snap) => { title: Txt; body: Txt }> = {
+  atfHot: (v) => ({ title: T(`Масло АКПП ${Math.round(v.hw.atf)} °C`, `Transmission fluid ${Math.round(v.hw.atf)} °C`), body: T('Гидротрансформатор передаёт момент через масло: пока турбина медленнее насоса (машина стоит на тормозе, буксует, тянет в гору на низкой передаче), вся разница мощностей превращается в нагрев масла. Нормально 70–95 °C; выше 120 °C масло окисляется, фрикционы начинают гореть. Именно поэтому «стоп-тест» на заводе длится не больше 5 секунд.', 'The torque converter transmits torque through oil: while the turbine is slower than the pump (car held on the brake, wheels stuck, climbing in a low gear) the whole power difference heats the fluid. Normal is 70–95 °C; above 120 °C the oil oxidises and the clutch linings start to burn. That is why a factory stall test lasts no more than 5 seconds.') }),
+  atfProtect: (v) => ({ title: T('Защита АКПП: ограничение момента', 'Transmission protection: torque limited'), body: T(`Масло ${Math.round(v.hw.atf)} °C. Блок управления коробкой попросил двигатель снизить момент — меньше проскальзывания, меньше нагрева. Отпустите газ, дайте машине ехать: на ходу с блокировкой гидротрансформатора масло остывает в радиаторе.`, `Fluid at ${Math.round(v.hw.atf)} °C. The transmission computer asked the engine for less torque — less slip, less heat. Lift off and let the car roll: with the converter locked up the fluid cools in the radiator.`) }),
+  limp: () => ({ title: T('Аварийный режим АКПП', 'Transmission limp mode'), body: T('Коробка перегрета или повреждена: блок управления зафиксировал 3-ю передачу — так можно доехать до сервиса, не сжигая фрикционы переключениями.', 'The transmission is overheated or damaged: the computer locked it in 3rd — enough to reach a workshop without burning the clutches by shifting.') }),
+  transFail: () => ({ title: T('Коробка сгорела', 'Transmission destroyed'), body: T('Фрикционные пакеты разрушены (перегрев, удар при включении R на ходу или «бросок» с высоких оборотов). Двигатель ревёт, а момент до колёс почти не доходит — проскальзывание. Ремонт — переборка АКПП.', 'The clutch packs are destroyed (overheating, reverse engaged while moving, or a neutral drop at high revs). The engine revs but almost no torque reaches the wheels — they slip. The fix is a gearbox rebuild.') }),
+  neutralDrop: () => ({ title: T('«Бросок» из нейтрали', 'Neutral drop'), body: T('Двигатель раскручен на N, затем включён D: маховик и гидротрансформатор с накопленной энергией ударом передают её через фрикцион на валы, шестерни и полуоси. Ресурс коробки съеден за одну секунду. Включайте передачу только на холостых.', 'The engine was revved in N, then D selected: the flywheel and converter dump their stored energy through a clutch into the shafts, gears and axles in one hit. Gearbox life gone in a second. Select a gear only at idle.') }),
+  engageDelay: () => ({ title: T('Коробка задержала включение', 'Engagement delayed'), body: T('Вы включили передачу на высоких оборотах. Блок управления не стал включать фрикцион сразу: он придушил двигатель и плавно заполнил пакет маслом. Выключите защиты — и увидите, что бывает без этого.', 'You selected a gear at high revs. The computer did not slam the clutch: it cut the engine and filled the clutch pack gently. Switch the protections off to see what happens without them.') }),
+  revRefused: (v) => ({ title: T('R на ходу запрещён', 'Reverse refused at speed'), body: v.byWire ? T('Селектор «по проводам»: он только просит, решает блок управления. На ходу вперёд задний ход не включится.', 'Shift-by-wire selector: it only asks, the computer decides. Reverse will not engage while rolling forward.') : T('Блок управления заблокировал клапан заднего хода: чтобы включить R на ходу, фрикцион пришлось бы остановить машину целиком — он бы сгорел. Сначала остановитесь.', 'The computer blocked the reverse valve: to engage R while moving forward the clutch would have to stop the whole car — it would burn. Stop first.') }),
+  reverseShock: () => ({ title: T('Задний ход на ходу!', 'Reverse at speed!'), body: T('Защиты выключены, и фрикцион заднего хода попытался остановить движущуюся машину: удар, рывок, ресурс коробки сильно уменьшен.', 'With the protections off the reverse clutch tried to stop a moving car: a bang, a jerk and a big chunk of gearbox life gone.') }),
+  pRefused: () => ({ title: T('P на ходу игнорируется', 'Park ignored at speed'), body: T('Электронный селектор: блок управления не опустит стояночную собачку, пока машина едет — включит P сам после остановки.', 'Electronic selector: the computer will not drop the parking pawl while the car moves — it engages P itself once stopped.') }),
+  pawl: () => ({ title: T('Трещит стояночная собачка', 'Parking pawl ratcheting'), body: T('Механический селектор в P на ходу: собачка бьётся о зубья стояночной шестерни и отскакивает, не входя в зацепление. Каждый удар — износ. Если она войдёт на скорости — сломается.', 'Mechanical selector in P while rolling: the pawl hits the parking gear teeth and bounces off. Every hit wears it. If it drops in at speed, it breaks.') }),
+  pawlBroken: () => ({ title: T('Собачка сломана', 'Parking pawl broken'), body: T('Положение P больше не удерживает машину — на уклоне она покатится. Всегда сначала полная остановка и ручной тормоз, потом P.', 'P no longer holds the car — on a slope it will roll away. Always stop completely and set the handbrake first, then P.') }),
+  downshiftRefused: () => ({ title: T('Понижение отклонено', 'Downshift refused'), body: T('На пониженной передаче двигатель раскрутился бы выше красной зоны — и ограничитель оборотов тут не поможет: крутят колёса, а не топливо. Коробка отказала. Сначала сбросьте скорость.', 'In the lower gear the engine would spin past the red line — and the rev limiter cannot help, because the wheels drive it, not the fuel. The gearbox refused. Slow down first.') }),
+  overrev: () => ({ title: T('Перекрут двигателя', 'Mechanical over-rev'), body: T('Принудительное понижение: колёса раскрутили коленвал выше предела. Клапаны не успевают закрываться за кулачками («зависают»), шатуны растягиваются. Двигатель повреждён — мощность упала.', 'A forced downshift: the wheels spun the crank beyond its limit. The valves cannot follow the cams (valve float) and the con-rods stretch. The engine is damaged — power is down.') }),
+  engineSeized: () => ({ title: T('Двигатель разрушен', 'Engine destroyed'), body: T('Клапаны встретились с поршнями (или перегрев сорвал прокладку и заклинил поршни). Двигатель не заводится — только замена.', 'The valves met the pistons (or overheating blew the gasket and seized the pistons). The engine will not start — it needs replacing.') }),
+  engineDamaged: () => ({ title: T('Двигатель повреждён', 'Engine damaged'), body: T('Компрессия упала, мощность ≈ 60 % от нормы. Машина едет, но это уже работа для моториста.', 'Compression is down, power ≈ 60 % of normal. It still drives, but it is a job for an engine shop.') }),
+  coldRev: (v) => ({ title: T(`Двигатель холодный: масло ${Math.round(v.hw.oil)} °C`, `Engine cold: oil ${Math.round(v.hw.oil)} °C`), body: T('Холодное масло густое: на высоких оборотах оно не успевает дойти до вкладышей и кулачков, и детали трутся «насухо». Пока масло не прогрелось до ≈ 60 °C, держите обороты ниже половины тахометра и не давите газ в пол.', 'Cold oil is thick: at high revs it does not reach the bearings and cam lobes in time and parts rub almost dry. Until the oil is at ≈ 60 °C keep below half the rev counter and do not floor it.') }),
+  overheat: (v) => ({ title: T(`Перегрев: ОЖ ${Math.round(v.hw.coolant)} °C`, `Overheating: coolant ${Math.round(v.hw.coolant)} °C`), body: T('Тепла от сгорания больше, чем радиатор успевает отдать: большая нагрузка на малой скорости (стоп-тест, буксование, ползание в гору). Термостат открыт полностью, вентилятор на максимуме. Выше 120 °C ведёт головку блока и пробивает прокладку. Сбросьте газ, дайте поработать на холостых.', 'More heat from combustion than the radiator can shed: heavy load at low speed (stall test, wheelspin, crawling uphill). The thermostat is wide open and the fan at full. Above 120 °C the head warps and the gasket blows. Lift off and let it idle.') }),
+  headGasket: () => ({ title: T('Пробило прокладку ГБЦ', 'Head gasket failing'), body: T('Перегрев деформировал головку: газы идут в систему охлаждения, антифриз — в цилиндры. Двигатель теряет компрессию.', 'Overheating warped the head: combustion gas enters the coolant and coolant enters the cylinders. The engine loses compression.') }),
+  turboCoked: () => ({ title: T('Турбина выключена горячей', 'Turbo shut down hot'), body: T('Корпус турбины был раскалён (> 480 °C), а вы заглушили мотор: масло в подшипнике остановилось и закоксовалось. После активной езды дайте поработать 30–60 с на холостых — турбина остынет потоком масла и воздуха.', 'The turbine housing was glowing (> 480 °C) when you switched off: the oil in its bearing stopped and coked. After hard driving idle for 30–60 s — oil and air cool the turbo down.') }),
+  turboDead: () => ({ title: T('Турбина вышла из строя', 'Turbo failed'), body: T('Подшипник разрушен, наддува нет — мощность как у атмосферного мотора, и много сизого дыма.', 'The bearing is gone, no boost — power like a non-turbo engine and lots of blue smoke.') }),
+  brakeFade: (v) => ({ title: T(`Тормоза перегреты: ${Math.round(Math.max(...v.hw.disc))} °C`, `Brakes overheating: ${Math.round(Math.max(...v.hw.disc))} °C`), body: T('Каждое торможение превращает кинетическую энергию в тепло дисков. Выше ≈ 550 °C смола колодок газует, и трение падает — педаль та же, а машина тормозит хуже («фейдинг»). На спусках тормозите двигателем: ручной режим и низкая передача.', 'Every stop turns kinetic energy into disc heat. Above ≈ 550 °C the pad resin outgasses and friction falls — same pedal, less braking (fade). On long descents use engine braking: manual mode and a low gear.') }),
+  vacuumLost: () => ({ title: T('Нет усилителя тормозов', 'No brake assist'), body: T('Двигатель заглушен: вакуумный усилитель отдал запас за пару нажатий, педаль стала «деревянной». Тормоза работают, но давить надо в 3 раза сильнее. Рулевой усилитель тоже не работает.', 'The engine is off: the vacuum booster used its reserve in a couple of presses and the pedal went hard. The brakes still work but need 3× the force. Power steering is gone too.') }),
+  windup: (v) => ({ title: T('Скручивание трансмиссии (4H на асфальте)', 'Driveline wind-up (4H on asphalt)'), body: T(`У Fortuner подключаемый полный привод без межосевого дифференциала: в 4H передний и задний валы вращаются строго одинаково. В повороте передние колёса проходят больший путь — на сухом асфальте шины не могут проскользнуть, и валы закручиваются (сейчас ${(v.hw.windup * 100).toFixed(0)} %). Руль тяжелеет, машина «подпрыгивает», раздатка ломается. 4H — только на грязи, снегу, гравии.`, `The Fortuner's part-time 4WD has no centre differential: in 4H the front and rear shafts turn exactly together. In a turn the front wheels travel further — on dry asphalt the tyres cannot slip, so the shafts twist (now ${(v.hw.windup * 100).toFixed(0)} %). Steering gets heavy, the car crow-hops, the transfer case breaks. 4H is for mud, snow and gravel only.`) }),
+  xferBroken: () => ({ title: T('Раздатка сломана', 'Transfer case broken'), body: T('Цепь или шлицы раздаточной коробки не выдержали скручивания. Остался только задний привод (2H).', 'The transfer-case chain or splines gave way under wind-up. Only rear-wheel drive (2H) is left.') }),
+  '4LRefused': () => ({ title: T('4L не включается', '4L will not engage'), body: T('Понижающий ряд раздатки — это шестерни без синхронизатора. Включать только при полной остановке и селекторе в N; иначе зубья не войдут в зацепление (лампа 4L мигает).', 'The low range is an unsynchronised gear set. Engage only fully stopped with the selector in N; otherwise the teeth will not mesh (the 4L lamp blinks).') }),
+  xferGrind: () => ({ title: T('Скрежет в раздатке', 'Transfer case grinding'), body: T('2H ↔ 4H «на ходу» можно, но не быстрее 100 км/ч: синхронизатор не успевает выровнять скорости переднего вала.', '2H ↔ 4H on the fly is allowed, but not above 100 km/h: the synchroniser cannot match the front shaft speed in time.') }),
+}
+
+function HealthCard({ v }: { v: Snap }) {
+  const t = useT()
+  const bar = (val: number, lo: number, hi: number, warn: number, bad: number, label: Txt, unit = '°C') => {
+    const col = val >= bad ? '#ff4a3d' : val >= warn ? '#ffb02e' : val < lo + (warn - lo) * 0.35 ? '#5cd8ff' : '#36e07a'
+    return <div className="ds-hb"><small>{t(label)}</small><i><b style={{ width: `${Math.max(2, Math.min(100, ((val - lo) / (hi - lo)) * 100))}%`, background: col }} /></i><em style={{ color: col }}>{Math.round(val)}{unit}</em></div>
+  }
+  const health = (h: number, label: Txt) => <span className={`ds-hp ${h <= 0 ? 'dead' : h < 0.5 ? 'bad' : h < 0.95 ? 'warn' : ''}`}>{t(label)} {Math.round(h * 100)}%</span>
+  return (
+    <div className="ds-health">
+      <span className="eyebrow">{t(T('Механика и температуры', 'Hardware & temperatures'))}</span>
+      {bar(v.hw.coolant, 0, 130, 108, 118, T('ОЖ', 'Coolant'))}
+      {bar(v.hw.oil, 0, 150, 125, 140, T('Масло ДВС', 'Engine oil'))}
+      {bar(v.hw.atf, 0, 180, 115, 135, T('Масло АКПП', 'Gearbox fluid'))}
+      {bar(v.hw.turbo, 0, 900, 480, 760, T('Турбина', 'Turbo'))}
+      {bar(Math.max(...v.hw.disc), 0, 800, 450, 550, T('Тормоза', 'Brakes'))}
+      {v.partTime && bar(v.hw.windup * 100, 0, 130, 30, 100, T('Скручивание', 'Wind-up'), '%')}
+      <div className="ds-hps">{health(v.hw.eng, T('Двигатель', 'Engine'))}{health(v.hw.trans, T('АКПП', 'Gearbox'))}{v.partTime && health(v.hw.xfer, T('Раздатка', 'Transfer'))}{health(v.hw.turboH, T('Турбо', 'Turbo'))}{!v.byWire && health(v.hw.pawl, T('Собачка P', 'P pawl'))}</div>
+      {v.hw.limp && <small className="ds-limp">LIMP · 3</small>}
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------------ panel + shell */
 function Panel() {
   const t = useT()
   const ui = useDrive()
   const [, force] = useState(0)
   const c = D.car, k = c.ctl
+  const hv = useCarSnap()
   const set = (f: () => void) => { f(); force((n) => n + 1) }
   const [pad, setPad] = useState('')
   useEffect(() => { const id = setInterval(() => setPad(PAD.connected ? PAD.id : ''), 1000); return () => clearInterval(id) }, [])
@@ -324,19 +381,22 @@ function Panel() {
       </div>
       <div className="fs-seg wrap">
         <button className={`btn sm ${k.ignition ? 'on' : ''}`} onClick={() => set(() => { k.ignition = !k.ignition })}>{t(T('Зажигание (I)', 'Ignition (I)'))}</button>
-        {(['P', 'R', 'N', 'D'] as const).map((s) => <button key={s} className={`btn sm ${k.select === s ? 'on' : ''}`} onClick={() => set(() => { k.select = s })}>{s}</button>)}
+        {(['P', 'R', 'N', 'D'] as const).map((s) => <button key={s} className={`btn sm ${k.select === s ? 'on' : ''}`} onClick={() => set(() => { selectGear(c, s) })}>{s}</button>)}
         <button className={`btn sm ${k.manual ? 'on' : ''}`} onClick={() => set(() => { k.manual = !k.manual })}>{t(T('Ручной (M)', 'Manual (M)'))}</button>
       </div>
       {c.spec.awd && <div className="fs-seg wrap">
         <span className="eyebrow">{t(T('Привод', 'Drive'))}</span>
-        {(['2H', '4H', '4L'] as DriveMode[]).map((m) => <button key={m} className={`btn sm ${k.mode === m ? 'on' : ''}`} disabled={m === '4L' && Math.abs(c.u) > 1} onClick={() => set(() => { k.mode = m })}>{m}</button>)}
+        {(['2H', '4H', '4L'] as DriveMode[]).map((m) => <button key={m} className={`btn sm ${k.mode === m ? 'on' : ''}`} onClick={() => set(() => { requestMode(c, m) })}>{m}</button>)}
       </div>}
       <div className="fs-seg wrap">
         <span className="eyebrow">{t(T('Системы', 'Assists'))}</span>
         <button className={`btn sm ${k.abs ? 'on' : ''}`} onClick={() => set(() => { k.abs = !k.abs })}>ABS</button>
         <button className={`btn sm ${k.tcs ? 'on' : ''}`} onClick={() => set(() => { k.tcs = !k.tcs })}>TCS</button>
         <button className={`btn sm ${k.esc ? 'on' : ''}`} onClick={() => set(() => { k.esc = !k.esc })}>ESC</button>
+        <button className={`btn sm ${k.prot ? 'on' : ''}`} title={t(T('Защиты блоков управления двигателем и коробкой: задержка включения, запрет R на ходу, запрет перекрута, ограничение момента при перегреве', 'Engine and gearbox computer protections: delayed engagement, no reverse at speed, no over-rev downshift, torque limit when hot'))} onClick={() => set(() => { k.prot = !k.prot })}>{t(T('Защиты ЭБУ', 'ECU guards'))}</button>
+        <button className="btn sm" onClick={() => set(() => warmUp(c))}>{t(T('Прогреть', 'Warm up'))}</button>
       </div>
+      <HealthCard v={hv} />
       <div className="fs-seg wrap">
         <span className="eyebrow">{t(T('Камера (C)', 'Camera (C)'))}</span>
         {([['chase', T('Сзади', 'Chase')], ['driver', T('Водитель', 'Driver')], ['hood', T('Капот', 'Hood')], ['wheel', T('Колесо', 'Wheel')], ['orbit', T('Свободно', 'Free')]] as [Cam, Txt][]).map(([m, l]) => <button key={m} className={`btn sm ${ui.cam === m ? 'on' : ''}`} onClick={() => ui.set({ cam: m })}>{t(l)}</button>)}
@@ -363,17 +423,17 @@ export function DriveSim() {
       if (e.repeat) return
       const k = D.car.ctl
       if (e.code === 'KeyI') k.ignition = !k.ignition
-      if (e.code === 'KeyP') k.select = 'P'
-      if (e.code === 'KeyR') k.select = 'R'
-      if (e.code === 'KeyN') k.select = 'N'
-      if (e.code === 'KeyF') k.select = 'D'
+      if (e.code === 'KeyP') selectGear(D.car, 'P')
+      if (e.code === 'KeyR') selectGear(D.car, 'R')
+      if (e.code === 'KeyN') selectGear(D.car, 'N')
+      if (e.code === 'KeyF') selectGear(D.car, 'D')
       if (e.code === 'KeyM') k.manual = !k.manual
       if (e.code === 'KeyE' || e.code === 'ShiftLeft') { k.manual = true; k.shiftReq = 1 }
       if (e.code === 'KeyQ' || e.code === 'ControlLeft') { k.manual = true; k.shiftReq = -1 }
       if (e.code === 'KeyC') cycleCam()
-      if (e.code === 'Digit1') k.mode = '2H'
-      if (e.code === 'Digit2' && D.car.spec.awd) k.mode = '4H'
-      if (e.code === 'Digit3' && D.car.spec.awd && Math.abs(D.car.u) < 1) k.mode = '4L'
+      if (e.code === 'Digit1') requestMode(D.car, '2H')
+      if (e.code === 'Digit2') requestMode(D.car, '4H')
+      if (e.code === 'Digit3') requestMode(D.car, '4L')
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault()
     }
     const up = (e: KeyboardEvent) => D.keys.delete(e.code)

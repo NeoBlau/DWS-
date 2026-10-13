@@ -52,7 +52,9 @@ const drawPFD: Draw = (g, s) => {
   g.font = '15px monospace'; g.fillStyle = GREEN; g.textAlign = 'center'
   g.fillStyle = '#1b2029'; g.fillRect(6, 34, 42, 170); g.fillRect(208, 34, 42, 170)
   g.fillStyle = GREEN; g.fillText(String(Math.round(d.ias ?? 0)), 27, 125); g.fillText(String(Math.round((d.alt ?? 0) - 10)), 229, 125)
-  g.font = '11px monospace'; g.fillStyle = s.ctl.law === 'direct' ? AMBER : GREEN; g.fillText(s.ctl.law === 'direct' ? 'DIRECT' : s.airborne ? 'NORMAL' : 'GROUND', 128, 22)
+  const law = s.sys.law
+  g.font = '11px monospace'; g.fillStyle = law !== 'normal' ? AMBER : GREEN; g.fillText(law === 'normal' ? (s.airborne ? 'NORMAL' : 'GROUND') : law === 'mech' ? 'MAN PITCH TRIM' : law.toUpperCase(), 128, 22)
+  if (s.sys.ir.state !== 'nav') { g.fillStyle = '#05070a'; g.fillRect(52, 34, 152, 170); g.fillStyle = '#ff4a3d'; g.font = 'bold 20px monospace'; g.fillText('ATT', 128, 112); g.font = '11px monospace'; if (s.sys.ir.state === 'align') { g.fillStyle = CYAN; g.fillText(`IR ALIGN ${Math.ceil(90 - s.sys.ir.t)} s`, 128, 140) } }
   g.fillStyle = CYAN; g.fillText(`CONF ${d.confId ?? '0'}`, 210, 22)
   g.fillStyle = WHITE; g.fillText(`${String(Math.round((((d.psi ?? 0) / DEG + 90 + 360) % 360))).padStart(3, '0')}`, 128, 228)
   if (d.stall && s.airborne) { g.fillStyle = '#ff4a3d'; g.font = 'bold 22px monospace'; g.fillText('STALL', 128, 170) }
@@ -101,7 +103,9 @@ const drawSD: Draw = (g, s) => {
   ;[[128, 70], [80, 140], [176, 140]].forEach(([x, y], i) => {
     g.fillStyle = s.dmg.legs[i] ? '#ff4a3d' : col; g.beginPath(); g.moveTo(x - 16, y - 10); g.lineTo(x + 16, y - 10); g.lineTo(x, y + 12); g.fill()
   })
-  g.fillStyle = s.ctl.parkBrake ? AMBER : '#5b6573'; g.fillText(s.ctl.parkBrake ? 'PARK BRK' : 'BRK', 128, 196)
+  g.fillStyle = s.ctl.parkBrake ? AMBER : '#5b6573'; g.fillText(s.ctl.parkBrake ? 'PARK BRK' : 'BRK', 128, 176)
+  g.font = '11px monospace'
+  ;(['G', 'B', 'Y'] as const).forEach((k, i) => { const p = s.sys.hyd[k]; g.fillStyle = p > 2400 ? GREEN : AMBER; g.fillText(`${k} ${Math.round(p / 100) * 100}`, 50 + i * 78, 200) })
   g.fillStyle = GREEN; g.fillText(`GW ${(s.d.mass / 1000).toFixed(1)} T`, 128, 226)
 }
 function useDisplay(draw: Draw) {
@@ -111,7 +115,15 @@ function useDisplay(draw: Draw) {
     return { tex: t, ctx: c.getContext('2d')! }
   }, [])
   const acc = useRef(0)
-  useFrame((_, dt) => { acc.current += dt; if (acc.current > 0.08) { acc.current = 0; draw(ctx, FS.sim); tex.needsUpdate = true } })
+  useFrame((_, dt) => {
+    acc.current += dt
+    if (acc.current > 0.08) {
+      acc.current = 0
+      // the display units are on the AC buses: no AC power, black screens
+      if (FS.sim.sys.acEss) draw(ctx, FS.sim); else { ctx.fillStyle = '#020304'; ctx.fillRect(0, 0, 256, 256) }
+      tex.needsUpdate = true
+    }
+  })
   useEffect(() => () => tex.dispose(), [tex])
   return tex
 }

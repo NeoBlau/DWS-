@@ -18,21 +18,22 @@ interface UI {
   path: boolean // glide-path gates in the sky
   sound: boolean
   start: Start
-  ac: 'a320' | 'strizh'
+  ac: 'a320' | 'strizh' | 'vortex'
   design: boolean
+  overhead: boolean
   epoch: number // bumps on reset so components re-read the sim
   set: (p: Partial<Omit<UI, 'set'>>) => void
 }
 export const useFlight = create<UI>((set) => ({
-  cam: 'chase', paused: false, forces: true, guide: true, path: true, sound: false, start: 'gate', ac: 'a320', design: false, epoch: 0,
+  cam: 'chase', paused: false, forces: true, guide: true, path: true, sound: false, start: 'gate', ac: 'a320', design: false, overhead: true, epoch: 0,
   set: (p) => set(p),
 }))
 
 /** a deep link from the Study section */
-export const PENDING_FLIGHT: { v: { start: Start; cam?: CamMode; ac?: 'a320' | 'strizh'; design?: boolean; patch?: (s: Sim) => void } | null } = { v: null }
+export const PENDING_FLIGHT: { v: { start: Start; cam?: CamMode; ac?: 'a320' | 'strizh' | 'vortex'; design?: boolean; patch?: (s: Sim) => void } | null } = { v: null }
 
 export function resetSim(start: Start) {
   FS.sim = createSim(start, SPECS[useFlight.getState().ac])
   FS.wheelRot = [0, 0, 0]
-  useFlight.getState().set({ start, paused: false, epoch: useFlight.getState().epoch + 1 })
+  useFlight.getState().set({ start, paused: false, overhead: start === 'gate', epoch: useFlight.getState().epoch + 1 })
 }

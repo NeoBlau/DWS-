@@ -32,8 +32,18 @@ export function phaseNarration(s: Sim): { phase: Txt; now: Txt } {
   if (!s.airborne && !s.everAirborne && (engRun < 2 || s.ctl.push || (d.surface !== 'runway' && d.gs < 25))) {
     if (engStart) return {
       phase: T('Запуск двигателей', 'Engine start'),
-      now: T(`Воздух от вспомогательной силовой установки (APU) крутит воздушный стартер — он раскручивает ротор (N1 ${r0(s.n1[0])}%). На ~22 % оборотов компрессора открывается подача топлива и включаются свечи: розжиг, EGT подскакивает до ${r0(d.egt[0])} °C. Когда турбина начинает сама крутить компрессор, стартер отключается — двигатель выходит на малый газ.`,
-        `Air from the APU drives the air starter, which spins the rotor (N1 ${r0(s.n1[0])}%). At ~22 % core speed fuel and igniters come on: light-off, EGT jumps to ${r0(d.egt[0])} °C. Once the turbine can drive the compressor by itself the starter cuts out and the engine settles at idle.`),
+      now: (() => { const i = s.eng[1].state === 'starting' ? 1 : 0, e = s.eng[i]; return T(`Двигатель ${i + 1}: ${s.spec.arch === 'electric' ? 'стартер-генератор от электросети' : `воздух ${r0(s.sys.bleed)} psi крутит воздушный стартер`} — ротор высокого давления N2 ${r0(e.n2)}%. На 16 % N2 — топливо и свечи: розжиг, EGT ${r0(e.egt)} °C (предел запуска 725 °C). На 50 % стартер отключается, на 58 % — малый газ.`,
+        `Engine ${i + 1}: ${s.spec.arch === 'electric' ? 'the starter-generator runs on electrical power' : `${r0(s.sys.bleed)} psi of air drives the air starter`} — HP rotor N2 ${r0(e.n2)}%. At 16 % N2 fuel and igniters: light-off, EGT ${r0(e.egt)} °C (start limit 725 °C). At 50 % the starter cuts out, at 58 % the engine is at idle.`) })(),
+    }
+    if (!s.sys.dcBat) return {
+      phase: T('Самолёт обесточен', 'Cold and dark'),
+      now: T(`Ни одна система не работает: нет электричества — нет экранов, компьютеров управления, насосов и запуска. Начните с верхнего пульта (кнопка «Верхний пульт», клавиша O): аккумуляторы → аэродромное питание → ИНС → ВСУ. Заправлено ${r0(s.fuel)} кг.`,
+        `Nothing works: without electricity there are no displays, flight-control computers, pumps or engine start. Start at the overhead panel (button “Overhead”, key O): batteries → ground power → IRs → APU. ${r0(s.fuel)} kg of fuel on board.`),
+    }
+    if (engRun === 0 && !engStart) return {
+      phase: T('Подготовка кабины', 'Cockpit preparation'),
+      now: T(`Питание: ${s.sys.acSrc[0] || 'только аккумуляторы'}. ВСУ: ${s.sys.apu.state === 'avail' ? 'работает' : s.sys.apu.state === 'off' ? 'выключена' : 'запускается'}. Воздух: ${r0(s.sys.bleed)} psi. ИНС: ${s.sys.ir.state === 'nav' ? 'готова' : s.sys.ir.state === 'align' ? 'выставка' : 'выключена'}. Гидравлика: G ${r0(s.sys.hyd.G)} / B ${r0(s.sys.hyd.B)} / Y ${r0(s.sys.hyd.Y)} psi — пока двигатели стоят, давления нет, и рули не двигаются.`,
+        `Power: ${s.sys.acSrc[0] || 'batteries only'}. APU: ${s.sys.apu.state}. Bleed: ${r0(s.sys.bleed)} psi. IRs: ${s.sys.ir.state}. Hydraulics: G ${r0(s.sys.hyd.G)} / B ${r0(s.sys.hyd.B)} / Y ${r0(s.sys.hyd.Y)} psi — with the engines stopped there is no pressure and the surfaces cannot move.`),
     }
     if (engRun === 0) return {
       phase: T('Холодная кабина у терминала', 'Cold aircraft at the gate'),
@@ -138,6 +148,7 @@ export function phaseNarration(s: Sim): { phase: Txt; now: Txt } {
 
 /* ---------------------------------------------------------------- how the system you just used works */
 export type Topic = 'flaps' | 'gear' | 'thrust' | 'pitch' | 'roll' | 'rudder' | 'speedbrake' | 'reverse' | 'brakes' | 'law' | 'trim' | 'alphaProt' | 'stall' | 'groundSpoilers' | 'tailstrike'
+  | 'apuStart' | 'apuAvail' | 'irAlign' | 'irMoved' | 'startFault' | 'modeNotStart' | 'noPower' | 'extTorn' | 'rat' | 'nwsLost' | 'gravityGear' | 'imbalance' | 'cabAlt' | 'lightOff'
   | 'engineStart' | 'park' | 'pushback' | 'flapJam' | 'flapTorn' | 'gearDamage' | 'gearCollapse' | 'overstress' | 'engineFail' | 'flameout' | 'bellyLanding' | 'toConfig' | 'engineStrike'
 export function explain(topic: Topic, s: Sim): { title: Txt; body: Txt } {
   const d = s.d
@@ -190,6 +201,24 @@ export function explain(topic: Topic, s: Sim): { title: Txt; body: Txt } {
     case 'stall': return { title: T('Сваливание', 'Stall'), body: T(
       `Угол атаки превысил критический: поток срывается с верхней поверхности, подъёмная сила падает, сопротивление резко растёт. Выход: ручку от себя (уменьшить угол атаки), затем тяга.`,
       `Angle of attack passed the critical value: the flow separates from the upper surface, lift collapses and drag jumps. Recovery: stick forward (reduce angle of attack), then thrust.`) }
+    case 'apuStart': case 'apuAvail': return { title: T('ВСУ — вспомогательная силовая установка', 'APU — auxiliary power unit'), body: T(
+      `Маленький газотурбинный двигатель в хвосте (обороты ${r0(s.sys.apu.n)}%, EGT ${r0(s.sys.apu.egt)} °C). Его раскручивает электростартер от аккумуляторов — поэтому без BAT ВСУ не запустить. На 95 % — AVAIL: ВСУ даёт генератор 90 кВА и сжатый воздух ≈ 36 psi для стартеров двигателей и кондиционеров. Жжёт ≈ 120 кг/ч топлива из левой магистрали.`,
+      `A small gas turbine in the tail (speed ${r0(s.sys.apu.n)}%, EGT ${r0(s.sys.apu.egt)} °C). An electric starter spins it from the batteries — so without BAT there is no APU. At 95 % it is AVAIL: a 90 kVA generator plus ≈ 36 psi of compressed air for the engine starters and the packs. It burns ≈ 120 kg/h from the left feed line.`) }
+    case 'irAlign': case 'irMoved': return { title: T('Выставка ИНС (ADIRS)', 'IR alignment (ADIRS)'), body: T(
+      `Три инерциальных блока (лазерные гироскопы и акселерометры) должны найти вертикаль и север, измеряя вращение Земли (15°/ч) — на это нужна полная неподвижность. ${s.sys.ir.state === 'align' ? `Осталось ≈ ${Math.ceil(90 - s.sys.ir.t)} с.` : ''} Если самолёт сдвинулся — выставка начинается заново. Пока она не закончена, у компьютеров нет данных об углах и угловых скоростях: на PFD красный ATT, а управление только в прямом законе.`,
+      `Three inertial units (ring-laser gyros and accelerometers) must find the vertical and true north by sensing the Earth's rotation (15°/h) — that needs the aircraft perfectly still. ${s.sys.ir.state === 'align' ? `About ${Math.ceil(90 - s.sys.ir.t)} s left.` : ''} If the aircraft moves, alignment restarts. Until it is complete the computers have no attitude or rate data: red ATT on the PFD and direct law only.`) }
+    case 'startFault': return { title: T('Запуск прерван', 'Start aborted'), body: T(
+      `FADEC прервал запуск: ${s.sys.startFault.filter(Boolean).join(', ') || '—'}. Частые причины: мало давления воздуха (включены PACK, нет APU BLEED), нет подачи топлива, режим не IGN/START, РУД не на малом газе (перегрев — «горячий запуск»). Двигателю нужно 30–40 с прокрутки на охлаждение, затем MASTER OFF → ON.`,
+      `The FADEC aborted the start: ${s.sys.startFault.filter(Boolean).join(', ') || '—'}. Usual causes: too little air pressure (packs on, APU BLEED off), no fuel feed, mode not IGN/START, thrust lever not at idle (over-temperature — a hot start). The engine needs 30–40 s of cooling, then MASTER OFF → ON.`) }
+    case 'modeNotStart': return { title: T('MASTER без IGN/START', 'MASTER without IGN/START'), body: T('Переключатель MASTER только открывает топливный кран и даёт команду FADEC. Последовательность запуска (стартер, свечи) включается, когда селектор ENG MODE стоит в IGN/START. Поставьте IGN/START — запуск начнётся.', 'The MASTER switch only opens the fuel valve and tells the FADEC. The start sequence (starter, igniters) runs when the ENG MODE selector is at IGN/START. Select IGN/START and the start begins.') }
+    case 'noPower': return { title: T('Нет питания', 'No electrical power'), body: T('FADEC, клапаны и свечи требуют электричества. Самолёт обесточен — сначала аккумуляторы (BAT 1/2), затем аэродромное питание или ВСУ.', 'The FADEC, valves and igniters need electricity. The aircraft is dark — batteries first (BAT 1/2), then ground power or the APU.') }
+    case 'extTorn': return { title: T('Вырван кабель питания', 'Ground-power cable torn'), body: T('Самолёт тронулся с подключённым аэродромным питанием — кабель вырвало из разъёма. В жизни это повреждённый разъём и разбор в авиакомпании. Перед буксировкой: запустить ВСУ или двигатели, EXT PWR — OFF.', 'The aircraft moved with ground power connected — the cable was ripped out. In real life that is a damaged receptacle and an incident report. Before pushback: APU or engines running, EXT PWR off.') }
+    case 'rat': return { title: T('Выпущена RAT', 'RAT deployed'), body: T('Оба генератора потеряны: из фюзеляжа выпала ветряная турбина. Она крутит насос синей гидросистемы, а он — аварийный генератор. Работает только основное: один PFD, компьютеры в альтернативном законе, часть насосов. Скорость держите выше 140 узлов, иначе RAT не даст давления.', 'Both generators are lost: a ram-air turbine dropped out of the fuselage. It drives the blue hydraulic pump, which drives an emergency generator. Only essentials work: one PFD, computers in alternate law, some pumps. Keep above 140 kt or the RAT gives no pressure.') }
+    case 'nwsLost': return { title: T('Носовое колесо не поворачивается', 'No nose-wheel steering'), body: T('Привод поворота носовой стойки питается от жёлтой гидросистемы. Давления нет (двигатель 2 и жёлтый электронасос выключены) — педали не поворачивают колесо. Запустите двигатель 2 или включите Y ELEC PUMP.', 'Nose-wheel steering is powered by the yellow hydraulic system. No pressure (engine 2 and the yellow electric pump are off) — the pedals do not turn the wheel. Start engine 2 or switch on the Y ELEC PUMP.') }
+    case 'gravityGear': return { title: T('Выпуск шасси под собственным весом', 'Gravity gear extension'), body: T('Зелёная система без давления: замки створок открываются механически, и стойки выпадают под собственным весом и напором воздуха — медленнее (≈ 25 с). Убрать шасси обратно невозможно.', 'Green system without pressure: the uplocks are released mechanically and the legs free-fall under weight and airflow — slower (≈ 25 s). The gear cannot be raised again.') }
+    case 'imbalance': return { title: T('Дисбаланс топлива', 'Fuel imbalance'), body: T(`Левый бак ${r0(s.sys.tank.L)} кг, правый ${r0(s.sys.tank.R)} кг. Центр тяжести сместился к тяжёлому крылу, самолёт кренит — элероны постоянно отклонены, сопротивление растёт. Откройте X FEED и выключите насосы лёгкой стороны, чтобы оба двигателя брали из тяжёлого бака.`, `Left tank ${r0(s.sys.tank.L)} kg, right ${r0(s.sys.tank.R)} kg. The centre of gravity moved toward the heavy wing and the aircraft rolls — the ailerons are held deflected and drag rises. Open X FEED and switch off the pumps on the light side so both engines draw from the heavy tank.`) }
+    case 'cabAlt': return { title: T('Высота в кабине', 'Cabin altitude'), body: T(`Кабина «поднялась» до ${r0(s.sys.cab)} футов: кондиционеры не подают воздух (PACK выключены или нет отбора). На такой высоте у людей кислородное голодание; выше 14 000 футов выпадают маски. Включите PACK или снижайтесь до 10 000 футов.`, `The cabin has climbed to ${r0(s.sys.cab)} ft: the packs are not supplying air (switched off or no bleed). People become hypoxic; above 14 000 ft the masks drop. Switch the packs on or descend to 10 000 ft.`) }
+    case 'lightOff': return { title: T('Розжиг', 'Light-off'), body: T('На 16 % N2 FADEC открыл топливо и включил свечи: смесь вспыхнула, EGT резко растёт. Турбина начинает помогать стартеру, на 50 % N2 стартер отключается, на 58 % — малый газ.', 'At 16 % N2 the FADEC opened the fuel and fired the igniters: the mixture lit, EGT rises fast. The turbine now helps the starter; at 50 % N2 the starter cuts out, at 58 % the engine is at idle.') }
     case 'engineStart': return { title: T('Запуск двигателя', 'Engine start'), body: T('Последовательность: воздух APU → воздушный стартер → ротор высокого давления разгоняется → подача топлива и зажигание → розжиг (EGT растёт) → турбина сама крутит компрессор → стартер отключается → малый газ (~20 % N1).', 'Sequence: APU air → air starter → HP rotor accelerates → fuel and ignition → light-off (EGT rises) → the turbine drives the compressor itself → starter cut-out → idle (~20 % N1).') }
     case 'park': return { title: T('Стояночный тормоз', 'Parking brake'), body: T('Держит колёса тормозами от аккумулятора давления, даже без работающей гидравлики. Попробуете взлететь с ним — самолёт не разгонится, а система предупредит CONFIG PARK BRK.', 'Holds the wheels using an accumulator, even without hydraulic pumps running. Try to take off with it set and the aircraft will not accelerate — the CONFIG PARK BRK warning sounds.') }
     case 'pushback': return { title: T('Буксировка', 'Pushback'), body: T('Тягач толкает самолёт за носовую стойку, отключив её рулевое управление от педалей пилота. Пилот в это время запускает двигатели и держит связь с наземным техником.', 'The tug pushes on the nose gear, with steering disconnected from the pilots. Meanwhile the crew starts the engines and talks to the ground engineer.') }
@@ -246,6 +275,22 @@ export function eventText(e: SimEvent, v: number | undefined): Txt | null {
     case 'parked': return T('Рейс завершён', 'Flight complete')
     case 'pushback': return T('Буксир подключен', 'Tug connected')
     case 'grass': return T('Колёса на грунте', 'Wheels on the grass')
+    case 'extTorn': return T('Вырван кабель аэродромного питания!', 'Ground-power cable torn out!')
+    case 'rat': return T('RAT выпущена — аварийное электропитание', 'RAT out — emergency electrical power')
+    case 'apuStart': return T('ВСУ: запуск', 'APU start')
+    case 'apuAvail': return T('APU AVAIL', 'APU AVAIL')
+    case 'apuFail': return T('ВСУ остановилась — нет топлива', 'APU shut down — no fuel')
+    case 'irAlign': return T('ИНС: выставка началась — не двигайте самолёт', 'IR alignment started — do not move the aircraft')
+    case 'irMoved': return T('Самолёт сдвинулся — выставка ИНС заново!', 'Aircraft moved — IR alignment restarted!')
+    case 'irNav': return T('ИНС выставлена — NAV', 'IRs aligned — NAV')
+    case 'lightOff': return T(`Двигатель ${v ?? ''}: розжиг`, `Engine ${v ?? ''}: light-off`)
+    case 'startFault': return T(`Запуск двигателя ${v ?? ''} прерван`, `Engine ${v ?? ''} start aborted`)
+    case 'modeNotStart': return T('MASTER включён, но ENG MODE не IGN/START', 'MASTER on, but ENG MODE is not IGN/START')
+    case 'noPower': return T('Нет электропитания — запуск невозможен', 'No electrical power — cannot start')
+    case 'imbalance': return T('Дисбаланс топлива', 'Fuel imbalance')
+    case 'cabAlt': return T('ВЫСОТА В КАБИНЕ!', 'CABIN ALTITUDE!')
+    case 'nwsLost': return T('Нет управления носовым колесом (жёлтая ГС)', 'No nose-wheel steering (yellow hyd)')
+    case 'gravityGear': return T('Аварийный выпуск шасси (без гидравлики)', 'Gravity gear extension (no hydraulics)')
     default: return null
   }
 }

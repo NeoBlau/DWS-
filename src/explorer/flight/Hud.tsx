@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CONFS, DEG, DEST, DETENT, FT, KT, confAt, detentName } from './fdm'
 import { FS, useFlight } from './state'
+import { IR_ALIGN_S, type Sys } from './systems'
 import { useT, T } from '../i18n'
 
 /* ------------------------------------------------------------------ live snapshot, 15 Hz */
@@ -11,18 +12,31 @@ function snap() {
     psi: (((d.psi ?? 0) / DEG) + 90 + 360) % 360, beta: (d.beta ?? 0) / DEG, alpha: (d.alpha ?? 0) / DEG, ra: d.ra ?? 0,
     n1: [...s.n1], egt: [...(d.egt ?? [0, 0])], ff: [...(d.ff ?? [0, 0])], vls: d.vls ?? 0, vfe: d.vfe ?? 350, vs1g: d.vs1g ?? 0, conf: d.confId ?? '0',
     confPos: s.srf.conf, confTarget: s.srf.confTarget, gear: s.srf.gear, gearLever: s.ctl.gearDown, spl: (s.srf.splL + s.srf.splR) / 2, gnd: s.srf.gndSpl,
-    ths: s.srf.ths / DEG, lever: s.ctl.lever, rev: s.ctl.rev, floor: s.fbw.alphaFloor, law: s.ctl.law, prot: d.inProt, flare: d.flare, stall: d.stall && s.airborne,
+    ths: s.srf.ths / DEG, lever: s.ctl.lever, rev: s.ctl.rev, floor: s.fbw.alphaFloor, law: s.sys.law, sys: JSON.parse(JSON.stringify(s.sys)) as Sys,
+    n2: s.eng.map((e) => e.n2), arch: s.spec.arch, imb: s.sys.tank.L - s.sys.tank.R, prot: d.inProt, flare: d.flare, stall: d.stall && s.airborne,
     nz: d.nz ?? 1, dist: (DEST - s.pos.x) / 1852, ab: s.ctl.autobrake, armed: s.ctl.spoilersArmed, wow: d.wow, accel: 0, airborne: s.airborne, crashed: s.crashed,
     lift: d.lift ?? 0, drag: d.drag ?? 0, thrust: (d.thrust?.[0] ?? 0) + (d.thrust?.[1] ?? 0), slat: confAt(s.srf.conf).slat, flap: confAt(s.srf.conf).flap, ever: s.everAirborne,
     fuel: s.fuel, fuelUsed: s.fuelUsed, eng: s.eng.map((e) => e.state), masters: [...s.ctl.master], park: s.ctl.parkBrake, push: s.ctl.push, stand: d.stand, gs: d.gs ?? 0,
     arrived: s.arrived, warnings: warnings(), mass: d.mass ?? 0, surface: d.surface ?? 'runway', t: s.t, tdVs: s.touchdownVs,
   }
 }
-/** ECAM-style warnings and memos derived from the aircraft state */
+/** ECAM-style warnings and memos derived from the aircraft state (red first, then amber, then green memos) */
 function warnings() {
-  const s = FS.sim, d = s.d, dm = s.dmg, out: { txt: string; lvl: 'red' | 'amber' | 'green' }[] = []
+  const s = FS.sim, d = s.d, dm = s.dmg, y = s.sys, out: { txt: string; lvl: 'red' | 'amber' | 'green' }[] = []
+  const hydArch = s.spec.arch === 'hyd', engRun = s.eng.some((e) => e.state === 'run')
   s.eng.forEach((e, i) => { if (e.state === 'failed') out.push({ txt: `ENG ${i + 1} ${e.why === 'fuel' ? 'FLAME OUT' : e.why === 'strike' ? 'DAMAGED' : 'FAIL'}`, lvl: 'red' }) })
+  y.startFault.forEach((f, i) => { if (f) out.push({ txt: `ENG ${i + 1} START FAULT: ${f}`, lvl: 'amber' }) })
   if (d.stall && s.airborne) out.push({ txt: 'STALL', lvl: 'red' })
+  if (y.emer) out.push({ txt: 'ELEC EMER CONFIG — RAT', lvl: 'red' })
+  if (y.law === 'mech') out.push({ txt: s.airborne ? 'MAN PITCH TRIM ONLY' : 'F/CTL NO COMPUTERS', lvl: s.airborne ? 'red' : 'amber' })
+  else if (y.law === 'alternate') out.push({ txt: 'F/CTL ALTN LAW (PROT LOST)', lvl: 'amber' })
+  else if (y.law === 'direct' && (s.airborne || engRun)) out.push({ txt: y.ir.state !== 'nav' ? 'F/CTL DIRECT LAW — NO IR' : 'F/CTL DIRECT LAW', lvl: 'amber' })
+  if (hydArch && (engRun || s.airborne)) {
+    const lo = (['G', 'B', 'Y'] as const).filter((k) => y.hyd[k] < 1450)
+    if (lo.length >= 2) out.push({ txt: `HYD ${lo.join('+')} SYS LO PR`, lvl: 'red' })
+    else if (lo.length === 1) out.push({ txt: `HYD ${lo[0]} SYS LO PR`, lvl: 'amber' })
+  }
+  if (s.sys.cab > 9550) out.push({ txt: s.sys.cab > 14000 ? 'CAB PR EXCESS ALT — MASKS DROPPED' : 'CAB PR EXCESS CAB ALT', lvl: 'red' })
   if (dm.structure > 0) out.push({ txt: `STRUCTURE OVERSTRESS ${Math.round(dm.structure * 100)}%`, lvl: dm.structure > 0.5 ? 'red' : 'amber' })
   if (dm.flaps === 2) out.push({ txt: 'F/CTL FLAP ATTACH SENSOR — FLAP LOST', lvl: 'red' })
   else if (dm.flaps === 1) out.push({ txt: 'F/CTL FLAPS JAMMED', lvl: 'amber' })
@@ -30,16 +44,28 @@ function warnings() {
   dm.legs.forEach((c, i) => { if (c) out.push({ txt: `L/G ${['NOSE', 'LEFT', 'RIGHT'][i]} GEAR COLLAPSED`, lvl: 'red' }) })
   if (dm.tail) out.push({ txt: 'TAIL STRIKE', lvl: 'amber' })
   if (s.fuel < 1000) out.push({ txt: s.fuel <= 0 ? 'FUEL — TANKS EMPTY' : 'FUEL LO LVL', lvl: s.fuel <= 0 ? 'red' : 'amber' })
+  s.eng.forEach((e, i) => { if (e.state === 'run' && !y.feed[i]) out.push({ txt: `FUEL ENG ${i + 1} NO FEED`, lvl: 'red' }) })
+  if (engRun && (!y.sw.pumps.L || !y.sw.pumps.R)) out.push({ txt: `FUEL ${!y.sw.pumps.L ? 'L' : 'R'} TK PUMPS OFF`, lvl: 'amber' })
+  if (Math.abs(y.tank.L - y.tank.R) > 1500) out.push({ txt: 'FUEL IMBALANCE', lvl: 'amber' })
   if (s.airborne && d.ias > (d.confId === '0' ? s.spec.vmo : d.vfe) + 4) out.push({ txt: 'OVERSPEED', lvl: 'red' })
   if (s.airborne && s.srf.gear < 0.99 && d.ra < 750 && s.ctl.lever < 0.3 && d.vs < 0) out.push({ txt: 'L/G GEAR NOT DOWN', lvl: 'red' })
   if (!s.everAirborne && s.ctl.lever > 0.8 && (s.srf.confTarget < 2 || s.srf.confTarget > 4)) out.push({ txt: 'CONFIG FLAPS NOT IN T.O CONFIG', lvl: 'red' })
   if (!s.everAirborne && s.ctl.lever > 0.8 && s.ctl.parkBrake) out.push({ txt: 'CONFIG PARK BRK ON', lvl: 'red' })
   if (!s.everAirborne && s.ctl.lever > 0.8 && s.ctl.speedbrake > 0.05) out.push({ txt: 'CONFIG SPD BRK NOT RETRACTED', lvl: 'red' })
+  if (!s.everAirborne && s.ctl.lever > 0.8 && y.ir.state !== 'nav') out.push({ txt: 'CONFIG IR NOT ALIGNED', lvl: 'red' })
+  if (y.extTorn) out.push({ txt: 'ELEC EXT PWR CABLE TORN', lvl: 'amber' })
+  y.sw.gen.forEach((g, i) => { if (!g && s.eng[i].state === 'run') out.push({ txt: `ELEC GEN ${i + 1} OFF`, lvl: 'amber' }) })
+  if (!y.ac[0] && !y.ac[1] && y.dcBat && !s.airborne) out.push({ txt: 'ELEC ON BAT ONLY', lvl: 'amber' })
+  if (hydArch && y.hyd.G < 1450 && y.hyd.Y < 1450 && y.accu < 1000 && !s.airborne && engRun) out.push({ txt: 'BRAKES ACCU LO PR', lvl: 'amber' })
+  if (y.ir.state === 'align') out.push({ txt: `IR IN ALIGN ${Math.ceil(IR_ALIGN_S - y.ir.t)} S`, lvl: 'green' })
+  if (y.apu.state === 'avail') out.push({ txt: y.sw.apuBleed ? 'APU AVAIL · APU BLEED' : 'APU AVAIL', lvl: 'green' })
+  if (y.sw.engMode === 'start') out.push({ txt: 'IGNITION', lvl: 'green' })
   if (s.ctl.parkBrake) out.push({ txt: 'PARK BRK', lvl: 'green' })
   if (s.ctl.push) out.push({ txt: 'PUSHBACK', lvl: 'green' })
   if (s.ctl.spoilersArmed && !s.airborne && s.everAirborne === false) out.push({ txt: 'GND SPLRS ARMED', lvl: 'green' })
-  s.eng.forEach((e, i) => { if (e.state === 'starting') out.push({ txt: `ENG ${i + 1} START`, lvl: 'green' }) })
-  return out.slice(0, 6)
+  s.eng.forEach((e, i) => { if (e.state === 'starting') out.push({ txt: `ENG ${i + 1} START${e.lit ? ' — LIGHT OFF' : ''}`, lvl: 'green' }) })
+  const rank = { red: 0, amber: 1, green: 2 }
+  return out.sort((a, b) => rank[a.lvl] - rank[b.lvl]).slice(0, 6)
 }
 const AC_H = 10 // CG height at rest (ft) so the altimeter reads ~0 on the runway
 export type Snap = ReturnType<typeof snap>
@@ -80,7 +106,9 @@ export function Pfd({ v }: { v: Snap }) {
   const hTicks: number[] = []
   for (let k = Math.floor((v.psi - 35) / 5) * 5; k <= v.psi + 35; k += 5) hTicks.push(k)
   const thr = v.floor ? 'A.FLOOR' : v.rev ? (v.rev === 2 ? 'MAX REV' : 'IDLE REV') : detentName(v.lever)
-  const law = v.flare ? 'FLARE' : v.law === 'direct' ? 'DIRECT LAW' : v.airborne ? 'NORMAL LAW' : 'GROUND'
+  const law = v.flare ? 'FLARE' : v.law === 'normal' ? (v.airborne ? 'NORMAL LAW' : 'GROUND') : v.law === 'alternate' ? 'ALTN LAW' : v.law === 'mech' ? 'MECH BACKUP' : 'DIRECT LAW'
+  if (!v.sys.acEss) return <Dark label={t(T('PFD: нет питания переменным током', 'PFD: no AC power'))} cls="fs-pfd" w={420} />
+  const noIr = v.sys.ir.state !== 'nav'
   const fpvY = cy - (v.gamma - v.theta) * PX
   const fpvX = cx + v.beta * PX
   return (
@@ -95,7 +123,7 @@ export function Pfd({ v }: { v: Snap }) {
       {/* FMA */}
       <g fontSize={11} fontFamily="ui-monospace,monospace" textAnchor="middle">
         <text x={70} y={18} fill={v.floor ? C.a : C.g}>{thr}</text>
-        <text x={210} y={18} fill={v.law === 'direct' ? C.a : C.g}>{law}</text>
+        <text x={210} y={18} fill={v.law !== 'normal' ? C.a : C.g}>{law}</text>
         <text x={350} y={18} fill={v.prot ? C.a : C.c}>{v.prot ? 'α PROT' : `CONF ${v.conf}`}</text>
         <line x1={140} x2={140} y1={6} y2={26} stroke="#39414d" /><line x1={280} x2={280} y1={6} y2={26} stroke="#39414d" />
       </g>
@@ -122,6 +150,7 @@ export function Pfd({ v }: { v: Snap }) {
         <g stroke="#000" strokeWidth={1} fill={C.y}>
           <rect x={cx - 58} y={cy - 2.5} width={34} height={5} /><rect x={cx + 24} y={cy - 2.5} width={34} height={5} /><rect x={cx - 3} y={cy - 3} width={6} height={6} fill="#000" stroke={C.y} />
         </g>
+        {noIr && <g><rect x={110} y={52} width={200} height={196} fill="#0b0e13" /><text x={cx} y={cy - 4} textAnchor="middle" fill={C.r} fontSize={22} fontWeight={700}>ATT</text>{v.sys.ir.state === 'align' && <text x={cx} y={cy + 22} textAnchor="middle" fill={C.c} fontSize={11}>IR ALIGN {Math.ceil(IR_ALIGN_S - v.sys.ir.t)} s</text>}</g>}
         {v.stall && <text x={cx} y={cy + 60} textAnchor="middle" fill={C.r} fontSize={22} fontWeight={700}>STALL</text>}
         {v.ra < 2500 && v.airborne && <text x={cx} y={232} textAnchor="middle" fill={v.ra < 400 ? C.a : C.g} fontSize={15} fontFamily="ui-monospace,monospace">{Math.round(v.ra)}</text>}
       </g>
@@ -158,6 +187,7 @@ export function Pfd({ v }: { v: Snap }) {
         {hTicks.map((k) => { const x = cx + (k - v.psi) * hp; const h = ((k % 360) + 360) % 360; return <g key={k}><line x1={x} x2={x} y1={262} y2={k % 10 === 0 ? 271 : 267} stroke={C.w} />{k % 10 === 0 && <text x={x} y={286} fill={C.w} fontSize={10} textAnchor="middle">{String(Math.round(h / 10)).padStart(2, '0')}</text>}</g> })}
       </g>
       <path d={`M${cx} 262 l-5 -7 h10z`} fill={C.y} />
+      {noIr && <g><rect x={120} y={262} width={180} height={32} fill="#1b2029" /><text x={cx} y={284} textAnchor="middle" fill={C.r} fontSize={14} fontWeight={700}>HDG</text></g>}
       {/* bottom-left: distance and g */}
       <g fontSize={10} fontFamily="ui-monospace,monospace" fill={C.c}>
         <text x={22} y={272}>{t(T('ДО ВПП', 'TO RWY'))} {v.dist > 0 ? v.dist.toFixed(1) : '—'} NM</text>
@@ -181,8 +211,17 @@ function N1Arc({ x, n1, egt, ff, label }: { x: number; n1: number; egt: number; 
     </g>
   )
 }
+function Dark({ label, cls, w }: { label: string; cls: string; w: number }) {
+  return (
+    <svg className={cls} viewBox={`0 0 ${w} 300`} role="img" aria-label={label}>
+      <rect width={w} height={300} rx={10} fill="#030405" />
+      <text x={w / 2} y={150} textAnchor="middle" fill="#3b4350" fontSize={12} fontFamily="ui-monospace,monospace">{label}</text>
+    </svg>
+  )
+}
 export function Ecam({ v }: { v: Snap }) {
   const t = useT()
+  if (!v.sys.acEss) return <Dark label={v.sys.dcBat ? 'ECAM — AC OFF' : 'NO POWER'} cls="fs-ecam" w={220} />
   const gearCol = v.gear > 0.99 ? C.g : v.gear > 0.01 ? C.r : 'transparent'
   const conf = CONFS[Math.round(v.confPos)]
   return (
