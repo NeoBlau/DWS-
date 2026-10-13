@@ -13,7 +13,7 @@ function snap() {
     n1: [...s.n1], egt: [...(d.egt ?? [0, 0])], ff: [...(d.ff ?? [0, 0])], vls: d.vls ?? 0, vfe: d.vfe ?? 350, vs1g: d.vs1g ?? 0, conf: d.confId ?? '0',
     confPos: s.srf.conf, confTarget: s.srf.confTarget, gear: s.srf.gear, gearLever: s.ctl.gearDown, spl: (s.srf.splL + s.srf.splR) / 2, gnd: s.srf.gndSpl,
     ths: s.srf.ths / DEG, lever: s.ctl.lever, rev: s.ctl.rev, floor: s.fbw.alphaFloor, law: s.sys.law, sys: JSON.parse(JSON.stringify(s.sys)) as Sys,
-    n2: s.eng.map((e) => e.n2), arch: s.spec.arch, imb: s.sys.tank.L - s.sys.tank.R, prot: d.inProt, flare: d.flare, stall: d.stall && s.airborne,
+    n2: s.eng.map((e) => e.n2), arch: s.spec.arch, v1: s.spec.v1, vr: s.spec.vr, lh2: s.spec.fuelKind === 'lh2', fuelLow: s.spec.fuelLow, imb: s.sys.tank.L - s.sys.tank.R, prot: d.inProt, flare: d.flare, stall: d.stall && s.airborne,
     nz: d.nz ?? 1, dist: (DEST - s.pos.x) / 1852, ab: s.ctl.autobrake, armed: s.ctl.spoilersArmed, wow: d.wow, accel: 0, airborne: s.airborne, crashed: s.crashed,
     lift: d.lift ?? 0, drag: d.drag ?? 0, thrust: (d.thrust?.[0] ?? 0) + (d.thrust?.[1] ?? 0), slat: confAt(s.srf.conf).slat, flap: confAt(s.srf.conf).flap, ever: s.everAirborne,
     fuel: s.fuel, fuelUsed: s.fuelUsed, eng: s.eng.map((e) => e.state), masters: [...s.ctl.master], park: s.ctl.parkBrake, push: s.ctl.push, stand: d.stand, gs: d.gs ?? 0,
@@ -43,9 +43,9 @@ function warnings() {
   if (dm.gearStuck) out.push({ txt: 'L/G DOORS DAMAGED — GEAR STUCK DOWN', lvl: 'amber' })
   dm.legs.forEach((c, i) => { if (c) out.push({ txt: `L/G ${['NOSE', 'LEFT', 'RIGHT'][i]} GEAR COLLAPSED`, lvl: 'red' }) })
   if (dm.tail) out.push({ txt: 'TAIL STRIKE', lvl: 'amber' })
-  if (s.fuel < 1000) out.push({ txt: s.fuel <= 0 ? 'FUEL — TANKS EMPTY' : 'FUEL LO LVL', lvl: s.fuel <= 0 ? 'red' : 'amber' })
+  if (s.fuel < s.spec.fuelLow) out.push({ txt: s.fuel <= 0 ? 'FUEL — TANKS EMPTY' : 'FUEL LO LVL', lvl: s.fuel <= 0 ? 'red' : 'amber' })
   s.eng.forEach((e, i) => { if (e.state === 'run' && !y.feed[i]) out.push({ txt: `FUEL ENG ${i + 1} NO FEED`, lvl: 'red' }) })
-  if (engRun && (!y.sw.pumps.L || !y.sw.pumps.R)) out.push({ txt: `FUEL ${!y.sw.pumps.L ? 'L' : 'R'} TK PUMPS OFF`, lvl: 'amber' })
+  if (engRun && ((!y.sw.pumps.L && y.tank.L > 0) || (!y.sw.pumps.R && y.tank.R > 0))) out.push({ txt: `FUEL ${!y.sw.pumps.L ? 'L' : 'R'} TK PUMPS OFF`, lvl: 'amber' })
   if (Math.abs(y.tank.L - y.tank.R) > 1500) out.push({ txt: 'FUEL IMBALANCE', lvl: 'amber' })
   if (s.airborne && d.ias > (d.confId === '0' ? s.spec.vmo : d.vfe) + 4) out.push({ txt: 'OVERSPEED', lvl: 'red' })
   if (s.airborne && s.srf.gear < 0.99 && d.ra < 750 && s.ctl.lever < 0.3 && d.vs < 0) out.push({ txt: 'L/G GEAR NOT DOWN', lvl: 'red' })
@@ -161,7 +161,7 @@ export function Pfd({ v }: { v: Snap }) {
         {v.airborne && <rect x={84} y={sy(v.vls)} width={4} height={Math.max(0, sy(0) - sy(v.vls))} fill={C.a} />}
         {v.airborne && <rect x={84} y={sy(v.vs1g * 1.06)} width={4} height={Math.max(0, sy(0) - sy(v.vs1g * 1.06))} fill={C.r} />}
         <rect x={84} y={0} width={4} height={Math.max(0, sy(vmax))} fill={C.r} />
-        {!v.ever && <g fill={C.c} fontSize={10}><text x={90} y={sy(140) + 3}>1</text><text x={90} y={sy(145) + 3}>R</text></g>}
+        {!v.ever && <g fill={C.c} fontSize={10}><text x={90} y={sy(v.v1) + 3}>1</text><text x={90} y={sy(v.vr) + 3}>R</text></g>}
         {Math.abs(v.accel) > 0.3 && <line x1={80} x2={80} y1={cy} y2={cy - v.accel * 10 * sp} stroke={C.y} strokeWidth={2} />}
       </g>
       <path d={`M20 ${cy - 11} h50 l8 11 l-8 11 h-50z`} fill="#000" stroke={C.y} />
@@ -249,7 +249,7 @@ export function Ecam({ v }: { v: Snap }) {
       </g>
       <g fontFamily="ui-monospace,monospace" fontSize={9.5}>
         <line x1={10} x2={210} y1={200} y2={200} stroke="#2a313c" />
-        <text x={14} y={214} fill="#9aa4b2">FOB</text><text x={60} y={214} fill={v.fuel < 1000 ? C.a : C.g}>{Math.round(v.fuel)} KG</text>
+        <text x={14} y={214} fill="#9aa4b2">{v.lh2 ? 'LH2' : 'FOB'}</text><text x={60} y={214} fill={v.fuel < v.fuelLow ? C.a : C.g}>{Math.round(v.fuel)} KG</text>
         <text x={130} y={214} fill="#9aa4b2">GW</text><text x={160} y={214} fill={C.g}>{(v.mass / 1000).toFixed(1)} T</text>
         {v.eng.map((e, i) => <text key={i} x={i ? 130 : 14} y={228} fill={e === 'run' ? C.g : e === 'failed' ? C.r : e === 'starting' ? C.a : '#5b6573'}>{`ENG${i + 1} ${e === 'run' ? 'AVAIL' : e === 'failed' ? 'FAIL' : e === 'starting' ? 'START' : 'OFF'}`}</text>)}
         {v.warnings.map((w, i) => <text key={i} x={14} y={244 + i * 11} fill={w.lvl === 'red' ? C.r : w.lvl === 'amber' ? C.a : C.g}>{w.txt}</text>)}

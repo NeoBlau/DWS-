@@ -5,6 +5,7 @@ import { TurboLab } from './TurboLab'
 import { TransmissionLab } from './TransmissionLab'
 import { BrakeLab } from './BrakeLab'
 import { TurbofanLab } from './TurbofanLab'
+import { RdeLab } from './RdeLab'
 
 /** full-screen deep-dive scenes ("SEE HOW IT WORKS"); the main scene is paused underneath */
 export function LabHost({ def }: { def: VehicleDef }) {
@@ -25,6 +26,7 @@ export function LabHost({ def }: { def: VehicleDef }) {
       {lab.id === 'transmission' && <TransmissionLab def={def} onClose={close} />}
       {lab.id === 'brakes' && <BrakeLab onClose={close} />}
       {lab.id === 'turbofan' && <TurbofanLab onClose={close} />}
+      {lab.id === 'rde' && <RdeLab onClose={close} />}
     </div>
   )
 }

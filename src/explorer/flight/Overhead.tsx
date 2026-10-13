@@ -69,10 +69,10 @@ export function OverheadPanel({ v, hl }: { v: Snap; hl: string | null }) {
           </fieldset>
           {!elec ? (
             <fieldset><legend>HYD · G {Math.round(y.hyd.G)} · B {Math.round(y.hyd.B)} · Y {Math.round(y.hyd.Y)}</legend>
-              <PB id="engPump1" hl={hl} label="ENG 1 PUMP (G)" on={y.sw.engPump[0]} top={y.sw.engPump[0] && y.hyd.G < 1450 ? 'FAULT' : ''} topCol="amber" onClick={() => tog((s) => { s.engPump[0] = !s.engPump[0] })} />
-              <PB id="blue" hl={hl} label="BLUE ELEC (B)" on={y.sw.blueElec} top={y.sw.blueElec && y.hyd.B < 1450 ? 'FAULT' : ''} topCol="amber" onClick={() => tog((s) => { s.blueElec = !s.blueElec })} />
+              <PB id="engPump1" hl={hl} label="ENG 1 PUMP (G)" on={y.sw.engPump[0]} top={y.sw.engPump[0] && v.eng[0] === 'run' && y.hyd.G < 1450 ? 'FAULT' : ''} topCol="amber" onClick={() => tog((s) => { s.engPump[0] = !s.engPump[0] })} />
+              <PB id="blue" hl={hl} label="BLUE ELEC (B)" on={y.sw.blueElec} top={y.sw.blueElec && v.eng.includes('run') && y.hyd.B < 1450 ? 'FAULT' : ''} topCol="amber" onClick={() => tog((s) => { s.blueElec = !s.blueElec })} />
               <PB id="ptu" hl={hl} label="PTU" on={y.sw.ptu} onClick={() => tog((s) => { s.ptu = !s.ptu })} />
-              <PB id="engPump2" hl={hl} label="ENG 2 PUMP (Y)" on={y.sw.engPump[1]} top={y.sw.engPump[1] && y.hyd.Y < 1450 ? 'FAULT' : ''} topCol="amber" onClick={() => tog((s) => { s.engPump[1] = !s.engPump[1] })} />
+              <PB id="engPump2" hl={hl} label="ENG 2 PUMP (Y)" on={y.sw.engPump[1]} top={y.sw.engPump[1] && v.eng[1] === 'run' && y.hyd.Y < 1450 ? 'FAULT' : ''} topCol="amber" onClick={() => tog((s) => { s.engPump[1] = !s.engPump[1] })} />
               <PB id="yElec" hl={hl} label="Y ELEC PUMP" on={y.sw.yElec} top={y.sw.yElec ? 'ON' : ''} topCol="blue" off="" onClick={() => tog((s) => { s.yElec = !s.yElec })} />
             </fieldset>
           ) : <fieldset><legend>EHA</legend><p className="ov-note">{t(T('Рули двигают электрогидравлические приводы (EHA): у каждого свой насос и мотор, нужна только электросеть.', 'Surfaces are moved by electro-hydrostatic actuators (EHA): each has its own pump and motor, it only needs electrical power.'))}</p></fieldset>}

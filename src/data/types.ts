@@ -10,7 +10,7 @@ export type SystemId =
   | 'cockpit' | 'cargo' | 'wings' | 'engines' | 'gear' | 'hydraulics' | 'flightControls'
   | 'pneumatics' | 'apu' | 'structure'
 
-export type LabId = 'cylinder' | 'compare' | 'turbo' | 'transmission' | 'brakes' | 'turbofan'
+export type LabId = 'cylinder' | 'compare' | 'turbo' | 'transmission' | 'brakes' | 'turbofan' | 'rde'
 
 /** Camera shot: where the eye is, what it looks at. */
 export interface Shot {

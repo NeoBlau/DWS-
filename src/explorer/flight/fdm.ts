@@ -36,6 +36,11 @@ export interface Spec {
   wingCap: number // fuel each wing tank holds, kg (the rest goes to the centre tank)
   fuelArm: number // lateral distance of the wing-tank fuel from the centreline, m
   crossTie?: boolean // turbo-electric: every fan is fed from a common bus, so losing one core gives no asymmetric thrust
+  v1: number; vr: number // take-off decision and rotation speeds at typical mass, kt
+  fuelKind: 'jet' | 'lh2'; lhv: number // fuel and its lower heating value, MJ/kg
+  fuelLow: number // low-fuel warning, kg
+  mdd: number // Mach where wave drag starts to build (supercritical design)
+  cruiseAt: { mach: number; alt: number } // design cruise point (alt in m)
   oew: number; payload: number; fuelMax: number; fuelStart: number // kg
   refMass: number // the struts and inertia are sized for this mass
   S: number; b: number; c: number; iw: number; CLA: number; CD0: number; CDgear: number; e: number
@@ -55,7 +60,7 @@ export interface Spec {
 }
 
 export const A320: Spec = {
-  id: 'a320', arch: 'hyd', wingCap: 6100, fuelArm: 5, oew: 42600, payload: 13500, fuelMax: 18700, fuelStart: 8000, refMass: 64000,
+  id: 'a320', arch: 'hyd', v1: 140, vr: 145, fuelKind: 'jet', lhv: 43.2, fuelLow: 1000, mdd: 0.72, cruiseAt: { mach: 0.78, alt: 10668 }, wingCap: 6100, fuelArm: 5, oew: 42600, payload: 13500, fuelMax: 18700, fuelStart: 8000, refMass: 64000,
   S: 122.6, b: 34.1, c: 4.19, iw: 2 * DEG, CLA: 5.6, CD0: 0.0215, CDgear: 0.018, e: 0.78,
   I: V3(1.35e6, 4.3e6, 3.1e6),
   tMax: 120000, eng: [V3(2.5, -1.2, -5.75), V3(2.5, -1.2, 5.75)], ffScale: 1, revFrac: 0.32, tsfc0: 0.0306, idleFF: 280, seats: 180,
@@ -86,7 +91,7 @@ export const A320: Spec = {
  * electric flight-control actuators, Krueger leading edges and double-slotted flaps, T-tail.
  */
 export const STRIZH: Spec = {
-  id: 'strizh', arch: 'electric', wingCap: 5200, fuelArm: 6.5, oew: 37800, payload: 13500, fuelMax: 15000, fuelStart: 6500, refMass: 58000,
+  id: 'strizh', arch: 'electric', v1: 128, vr: 132, fuelKind: 'jet', lhv: 43.2, fuelLow: 900, mdd: 0.72, cruiseAt: { mach: 0.74, alt: 10668 }, wingCap: 5200, fuelArm: 6.5, oew: 37800, payload: 13500, fuelMax: 15000, fuelStart: 6500, refMass: 58000,
   S: 118, b: 47.3, c: 2.55, iw: 2.5 * DEG, CLA: 5.9, CD0: 0.0186, CDgear: 0.016, e: 0.86,
   I: V3(2.4e6, 4.6e6, 2.9e6),
   tMax: 100000, eng: [V3(3.03, 1.85, -6.8), V3(3.03, 1.85, 6.8)], ffScale: 1, revFrac: 0.3, tsfc0: 0.0245, idleFF: 220, seats: 180,
@@ -111,7 +116,47 @@ export const STRIZH: Spec = {
   Cm0: 0.03, CmA: -1.5, CmE: 1.3, CmT: 2.7, CmQ: -30,
   Cla: 0.09, ClP: -0.6, Cnr: -0.25, Cnb: 0.15, Cnd: 0.1,
 }
-export const SPECS: Record<Spec['id'], Spec> = { a320: A320, strizh: STRIZH, vortex: undefined as unknown as Spec }
+/**
+ * «Вихрь-240» — blended wing body for 240 passengers. New principles working together:
+ *  · pressure-gain combustion: two turbo-generator cores burn hydrogen in a rotating detonation combustor —
+ *    detonation waves race round an annulus at ≈ 2 km/s, so combustion raises pressure instead of losing it
+ *    (Humphrey / Fickett–Jacobs cycle) — ≈ 15 % less fuel energy than a constant-pressure (Brayton) core;
+ *  · liquid hydrogen at 20 K is both the fuel and the coolant of superconducting generators, cables and motors
+ *    (≈ 99.5 % efficient), so power can be split freely between 8 electric fans;
+ *  · the fans sit on the upper aft body and swallow its slow boundary layer (boundary-layer ingestion): they
+ *    re-energise the wake instead of accelerating fresh air — ≈ 8 % less propulsive power;
+ *  · the whole body lifts; outer wing panels fold at the gate (52 m in the air, 36 m on the ground);
+ *  · any core can feed every fan: losing one core gives no asymmetric thrust at all.
+ * Numbers are a conceptual design computed with the same model as the A320, not certified data.
+ */
+export const VORTEX: Spec = {
+  id: 'vortex', arch: 'electric', v1: 110, vr: 115, fuelKind: 'lh2', lhv: 120, fuelLow: 400, crossTie: true, mdd: 0.8, cruiseAt: { mach: 0.84, alt: 13100 },
+  wingCap: 0, fuelArm: 0, oew: 64000, payload: 22800, fuelMax: 9000, fuelStart: 2600, refMass: 89000,
+  S: 400, b: 52, c: 11, iw: 1.5 * DEG, CLA: 4.6, CD0: 0.0086, CDgear: 0.0045, e: 0.92,
+  I: V3(4.6e6, 9.4e6, 6.2e6),
+  tMax: 140000, eng: [V3(-10.9, 1.6, -3.2), V3(-10.9, 1.6, 3.2)], ffScale: 1, revFrac: 0.38, tsfc0: 0.0071, idleFF: 60, seats: 240,
+  cgLayout: V3(-0.63, 3.0, 0),
+  confs: [
+    { id: '0', slat: 0, flap: 0, cl0: 0.08, as: 15, cd: 0, cm: 0, vfe: 340 },
+    { id: '1', slat: 20, flap: 0, cl0: 0.16, as: 17.5, cd: 0.003, cm: 0, vfe: 230 },
+    { id: '1+F', slat: 20, flap: 5, cl0: 0.26, as: 17, cd: 0.006, cm: -0.008, vfe: 215 },
+    { id: '2', slat: 20, flap: 8, cl0: 0.32, as: 17, cd: 0.009, cm: -0.012, vfe: 200 },
+    { id: '3', slat: 20, flap: 12, cl0: 0.38, as: 16.5, cd: 0.013, cm: -0.016, vfe: 190 },
+    { id: 'FULL', slat: 20, flap: 16, cl0: 0.44, as: 16.5, cd: 0.02, cm: -0.022, vfe: 180 },
+  ],
+  vmo: 340, mmo: 0.86, vle: 270, vlo: 250, nzMax: 2.5, nzMaxFlaps: 2.0,
+  noseGear: V3(11.0, 0, 0), mainGear: V3(-3.0, 0, 4.2),
+  hard: [
+    { id: 'tail', kind: 'tail', p: V3(-18.4, 3.35, 0) },
+    { id: 'engL', kind: 'engine', p: V3(-11.5, 3.9, -7.3) }, { id: 'engR', kind: 'engine', p: V3(-11.5, 3.9, 7.3) },
+    { id: 'tipL', kind: 'wingtip', p: V3(-8.9, 4.35, -26) }, { id: 'tipR', kind: 'wingtip', p: V3(-8.9, 4.35, 26) },
+    { id: 'bellyF', kind: 'belly', p: V3(12.0, 1.4, 0) }, { id: 'bellyA', kind: 'belly', p: V3(-6.0, 1.9, 0) },
+  ],
+  wingY: 0.4,
+  Cm0: 0.02, CmA: -0.42, CmE: 0.3, CmT: 0.42, CmQ: -7,
+  Cla: 0.1, ClP: -0.42, Cnr: -0.16, Cnb: 0.07, Cnd: 0.06,
+}
+export const SPECS: Record<Spec['id'], Spec> = { a320: A320, strizh: STRIZH, vortex: VORTEX }
 
 /** kept for components written against the A320 only */
 export const AC = { ...A320, mass: A320.refMass }
@@ -290,7 +335,8 @@ export function setFuel(s: Sim, kg: number) {
 /* ------------------------------------------------------------------ atmosphere & engines */
 export function isa(h: number) {
   const T = 288.15 - 0.0065 * Math.max(0, Math.min(h, 11000))
-  const rho = 1.225 * Math.pow(T / 288.15, 4.256)
+  // troposphere: ρ ∝ T^4.256; above 11 km (isothermal stratosphere) ρ falls exponentially
+  const rho = 1.225 * Math.pow(T / 288.15, 4.256) * (h > 11000 ? Math.exp(-(h - 11000) / 6341.6) : 1)
   return { T, rho, a: Math.sqrt(1.4 * 287.05 * T), sigma: rho / 1.225 }
 }
 export const DETENT = { IDLE: 0, CL: 0.6, FLX: 0.85, TOGA: 1 }
@@ -588,7 +634,7 @@ function systems(s: Sim, dt: number) {
   const burnt = burnFuel(s, d.ff, apuFF, dt)
   const tk = s.sys.tank
   s.fuel = tk.L + tk.C + tk.R; s.fuelUsed += burnt
-  if (s.fuel < 1000 && !s.flags.fuelLow) { s.flags.fuelLow = true; event(s, 'fuelLow') }
+  if (s.fuel < sp.fuelLow && !s.flags.fuelLow) { s.flags.fuelLow = true; event(s, 'fuelLow') }
   if (Math.abs(tk.L - tk.R) > 1500 && !s.flags.imb) { s.flags.imb = true; event(s, 'imbalance') }
   if (Math.abs(tk.L - tk.R) < 800) s.flags.imb = false
   if (s.sys.cab > 9550 && !s.flags.cab) { s.flags.cab = true; event(s, 'cabAlt') }
@@ -639,7 +685,7 @@ export function step(s: Sim, dt = H) {
     CL -= 0.55 * r.gndSpl + 0.14 * ((r.splL + r.splR) / 2) * (1 - r.gndSpl)
     const kInd = 1 / (Math.PI * sp.e * ((sp.b * sp.b) / sp.S))
     const CD = sp.CD0 + conf.cd + sp.CDgear * r.gear + kInd * phiGe * CL * CL + 0.05 * r.gndSpl + 0.03 * ((r.splL + r.splR) / 2) + 0.35 * d.beta * d.beta + 0.9 * stall
-      + (d.mach > 0.72 ? 0.25 * (d.mach - 0.72) ** 2 : 0) + (dm.gearStuck ? 0.01 : 0) + (dm.flaps === 2 ? 0.01 : 0)
+      + (d.mach > sp.mdd ? 0.25 * (d.mach - sp.mdd) ** 2 : 0) + (dm.gearStuck ? 0.01 : 0) + (dm.flaps === 2 ? 0.01 : 0)
       + (s.eng[0].state !== 'run' ? 0.0015 : 0) + (s.eng[1].state !== 'run' ? 0.0015 : 0)
     const CY = -0.85 * d.beta - 0.22 * r.rud
     const Cm = sp.Cm0 + conf.cm - flapLoss * 0.1 + sp.CmA * aw + sp.CmE * r.elev + sp.CmT * r.ths + sp.CmQ * qh - 0.035 * (1 - phiGe) - 0.4 * stall + 0.012 * r.gear - 0.05 * r.gndSpl

@@ -7,6 +7,10 @@ import type { Start, Sim } from '../explorer/flight/fdm'
 import type { CamMode } from '../explorer/flight/state'
 import { useT, useLang, T, type Txt } from '../explorer/i18n'
 import type { LabId, VehicleId } from '../data/types'
+import { AtlasView } from '../study/Atlas'
+import { CAR_SYSTEMS } from '../study/carSystems'
+import { PLANE_SYSTEMS } from '../study/planeSystems'
+import type { SystemDef } from '../study/atlasTypes'
 
 /*
  * «Изучение» — a catalogue of deep dives. Each card opens one mechanism up close: an explorer at a given
@@ -14,7 +18,8 @@ import type { LabId, VehicleId } from '../data/types'
  */
 type Go =
   | { kind: 'explorer'; id: Exclude<ExplorerId, 'flight'>; track: string; t?: number; mode?: ManualMode }
-  | { kind: 'flight'; start: Start; cam?: CamMode; ac?: 'a320' | 'strizh'; design?: boolean; patch?: (s: Sim) => void }
+  | { kind: 'flight'; start: Start; cam?: CamMode; ac?: 'a320' | 'strizh' | 'vortex'; design?: boolean; patch?: (s: Sim) => void }
+  | { kind: 'atlas'; id: string }
   | { kind: 'lab'; vehicle: VehicleId; lab: LabId }
   | { kind: 'drive' }
 interface Topic { id: string; group: string; title: Txt; text: Txt; tags: Txt; go: Go }
@@ -25,7 +30,12 @@ const G = {
   jet: T('Реактивный двигатель · A320', 'Jet engine · A320'),
   plane: T('Самолёт и его системы', 'The aircraft and its systems'),
   car: T('Шасси автомобиля', 'Car chassis'),
+  carsys: T('Все системы автомобиля — схемы, живые модели, чего нельзя делать', 'Every car system — schematics, live models, what not to do'),
+  planesys: T('Все системы самолёта A320', 'Every A320 aircraft system'),
+  vortex: T('«Вихрь-240»: новый принцип полёта', 'Vortex-240: a new way to fly'),
 }
+const ALL_SYS: SystemDef[] = [...CAR_SYSTEMS, ...PLANE_SYSTEMS]
+const sysTopic = (x: SystemDef): Topic => ({ id: `sys-${x.id}`, group: x.group === 'car' ? 'carsys' : x.group === 'plane' ? 'planesys' : 'vortex', title: x.title, text: x.lead, tags: T('схема · атлас', 'schematic · atlas'), go: { kind: 'atlas', id: x.id } })
 const TOPICS: Topic[] = [
   { id: 'cyl', group: 'diesel', title: T('Четыре такта крупно', 'The four strokes up close'), text: T('Впуск, сжатие, впрыск и сгорание, выпуск — по шагам и в замедлении. Видно, как клапаны открываются кулачками.', 'Intake, compression, injection and combustion, exhaust — step by step and in slow motion. Cams open the valves.'), tags: T('поршень · клапаны · форсунка', 'piston · valves · injector'), go: { kind: 'explorer', id: 'diesel', track: 'cyl' } },
   { id: 'rail', group: 'diesel', title: T('Common Rail: топливо под 2000 бар', 'Common Rail: fuel at 2000 bar'), text: T('Бак → фильтр → ТНВД → рампа → форсунки. Поток топлива подсвечен, остальное приглушено.', 'Tank → filter → pump → rail → injectors. The fuel flow is lit, everything else dimmed.'), tags: T('ТНВД · рампа · форсунки', 'pump · rail · injectors'), go: { kind: 'explorer', id: 'diesel', track: 'main', t: 8 } },
@@ -50,10 +60,14 @@ const TOPICS: Topic[] = [
   { id: 'strizh', group: 'plane', title: T('Проект «Стриж-180»', 'The Strizh-180 design'), text: T('Собственный самолёт: подкосное крыло, открытые вентиляторы и расчёт против A320.', 'Our own aircraft: truss-braced wing, open fans and the numbers against the A320.'), tags: T('проект', 'design'), go: { kind: 'flight', start: 'runway', ac: 'strizh', cam: 'chase', design: true } },
   { id: 'drive', group: 'car', title: T('За рулём: шины, ABS, ESC', 'At the wheel: tyres, ABS, ESC'), text: T('Сами разгоняйтесь, тормозите и входите в повороты на сухом, мокром и льду — кольца под колёсами показывают сцепление каждой шины.', 'Accelerate, brake and corner yourself on dry, wet and ice — rings under the wheels show each tyre’s grip.'), tags: T('автосимулятор', 'driving sim'), go: { kind: 'drive' } },
   { id: 'abs', group: 'car', title: T('Тормоза и ABS', 'Brakes and ABS'), text: T('Колодки, диск, суппорт — и как ABS не даёт колесу заблокироваться.', 'Pads, disc, caliper — and how ABS keeps the wheel from locking.'), tags: T('тормоза', 'brakes'), go: { kind: 'lab', vehicle: 'bmw', lab: 'brakes' } },
+  { id: 'vxfly', group: 'vortex', title: T('Полёт на «Вихре-240»', 'Fly the Vortex-240'), text: T('Летающее крыло на 240 мест: 8 электровентиляторов, водород, складные консоли. Попробуйте отказ двигателя — разворота не будет.', 'A 240-seat blended wing: 8 electric fans, hydrogen, folding wings. Try an engine failure — there is no yaw.'), tags: T('полёт · проект', 'flight · design'), go: { kind: 'flight', start: 'runway', ac: 'vortex', cam: 'chase', design: true } },
+  { id: 'vxrde', group: 'vortex', title: T('3D: детонационный двигатель', '3D: the detonation engine'), text: T('Волна детонации бежит по кольцу со скоростью 2 км/с: впрыск, сгорание, турбина, сверхпроводящий генератор, цикл p–v.', 'A detonation wave races round a ring at 2 km/s: injection, burning, turbine, superconducting generator, the p–v cycle.'), tags: T('RDE · 3D', 'RDE · 3D'), go: { kind: 'lab', vehicle: 'a320', lab: 'rde' } },
+  ...ALL_SYS.map(sysTopic),
   { id: 'trans', group: 'car', title: T('Трансмиссия 4×4', '4×4 driveline'), text: T('Раздаточная коробка, дифференциалы и блокировки.', 'Transfer case, differentials and locks.'), tags: T('4×4', '4×4'), go: { kind: 'lab', vehicle: 'fortuner', lab: 'transmission' } },
 ]
 
-function open(go: Go) {
+function open(go: Go, setAtlas: (id: string) => void) {
+  if (go.kind === 'atlas') { setAtlas(go.id); return }
   if (go.kind === 'explorer') { PENDING.start = { track: go.track, t: go.t ?? 0, mode: go.mode, playing: true }; getApp().set({ screen: 'explorer', explorer: go.id }) }
   else if (go.kind === 'flight') { PENDING_FLIGHT.v = { start: go.start, cam: go.cam, ac: go.ac, design: go.design, patch: go.patch }; getApp().set({ screen: 'explorer', explorer: 'flight' }) }
   else if (go.kind === 'drive') getApp().set({ screen: 'explorer', explorer: 'drive' })
@@ -64,10 +78,16 @@ export function Study() {
   const t = useT()
   const { lang, setLang } = useLang()
   const [q, setQ] = useState('')
+  const [atlas, setAtlas] = useState<string | null>(null)
   const list = useMemo(() => {
     const k = q.trim().toLowerCase()
     return k ? TOPICS.filter((x) => [x.title.ru, x.title.en, x.text.ru, x.text.en, x.tags.ru, x.tags.en].some((s) => s.toLowerCase().includes(k))) : TOPICS
   }, [q])
+  const sys = ALL_SYS.find((x) => x.id === atlas)
+  if (sys) {
+    const go: Go | null = sys.sim === 'drive' ? { kind: 'drive' } : sys.sim === 'flight' ? { kind: 'flight', start: 'gate', cam: 'chase' } : sys.sim === 'rde' ? { kind: 'lab', vehicle: 'a320', lab: 'rde' } : sys.sim === 'vortex' ? { kind: 'flight', start: 'cruise', ac: 'vortex', cam: 'chase' } : null
+    return <div className="study"><AtlasView sys={sys} onClose={() => setAtlas(null)} onGo={go ? () => open(go, setAtlas) : undefined} /></div>
+  }
   const groups = Object.keys(G) as (keyof typeof G)[]
   return (
     <div className="study">
@@ -86,7 +106,7 @@ export function Study() {
             <h2>{t(G[g])}</h2>
             <div className="study-grid">
               {items.map((x) => (
-                <button key={x.id} className="study-card glass" onClick={() => open(x.go)}>
+                <button key={x.id} className={`study-card glass ${x.go.kind === 'atlas' ? 'atl' : ''}`} onClick={() => open(x.go, setAtlas)}>
                   <b>{t(x.title)}</b>
                   <p>{t(x.text)}</p>
                   <small>{t(x.tags)}</small>

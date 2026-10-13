@@ -11,7 +11,7 @@ export function cruise(sp: Spec, mass: number, altM: number, mach: number) {
   const W = mass * G
   const CL = W / (q * sp.S)
   const k = 1 / (Math.PI * sp.e * ((sp.b * sp.b) / sp.S))
-  const CD = sp.CD0 + k * CL * CL + (mach > 0.72 ? 0.25 * (mach - 0.72) ** 2 : 0)
+  const CD = sp.CD0 + k * CL * CL + (mach > sp.mdd ? 0.25 * (mach - sp.mdd) ** 2 : 0)
   const D = CD * q * sp.S
   const ff = D * sp.tsfc0 * (1 + 0.85 * mach) // kg/h, both engines
   const km_h = V * 3.6
