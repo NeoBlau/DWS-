@@ -279,7 +279,9 @@ const contacts = (sp: Spec) => { let c = CONTACTS.get(sp.id); if (!c) { c = cont
 
 export function event(s: Sim, e: SimEvent, v?: number) {
   // the same event within a few seconds is one event
-  for (let i = s.events.length - 1; i >= 0 && s.t - s.events[i].t < 4; i--) if (s.events[i].e === e && s.events[i].v === v) return
+  // (for per-engine / per-leg events the value says which one, so those are compared too)
+  const byIndex = e === 'engineStart' || e === 'engineRun' || e === 'flameout' || e === 'engineStrike' || e === 'gearCollapse' || e === 'flaps' || e === 'engineFail'
+  for (let i = s.events.length - 1; i >= 0 && s.t - s.events[i].t < 4; i--) if (s.events[i].e === e && (!byIndex || s.events[i].v === v)) return
   s.events.push({ t: s.t, e, v })
   if (s.events.length > 80) s.events.shift()
 }
