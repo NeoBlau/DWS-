@@ -266,7 +266,7 @@ export function ForceLegend({ v }: { v: Snap }) {
   return (
     <div className="fs-legend glass">
       <span><i style={{ background: '#4fb3ff' }} />{t(T('Подъёмная сила', 'Lift'))} {kN(v.lift)} kN</span>
-      <span><i style={{ background: '#ffae3d' }} />{t(T('Вес', 'Weight'))} {kN(64000 * 9.81)} kN</span>
+      <span><i style={{ background: '#ffae3d' }} />{t(T("Вес", "Weight"))} {kN(v.mass * 9.81)} kN</span>
       <span><i style={{ background: '#58e08a' }} />{t(T('Тяга', 'Thrust'))} {kN(v.thrust)} kN</span>
       <span><i style={{ background: '#ff5b5b' }} />{t(T('Сопротивление', 'Drag'))} {kN(v.drag)} kN</span>
     </div>
