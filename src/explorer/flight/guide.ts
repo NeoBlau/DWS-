@@ -1,0 +1,32 @@
+import { T, type Txt } from '../i18n'
+import { DEG, DEST, DETENT, type Sim } from './fdm'
+
+/*
+ * Guided flight: an instructor that only suggests. Each step names the control to use (it gets highlighted
+ * in the UI) and a condition read from the simulation; it never moves a control or the aircraft.
+ */
+export type Ctl = 'flaps' | 'thrust' | 'stick' | 'pedals' | 'gear' | 'speedbrake' | 'reverse' | 'brakes' | 'none'
+export interface Step { id: string; ctl: Ctl; text: Txt; hint: Txt; done: (s: Sim) => boolean }
+
+const ft = (s: Sim) => s.d.alt - 10
+export const TAKEOFF_STEPS: Step[] = [
+  { id: 'flaps', ctl: 'flaps', text: T('Закрылки в положение 1 (на земле это 1+F)', 'Set flaps 1 (on the ground this is 1+F)'), hint: T('Кнопка «1» на рычаге FLAPS или клавиша F', 'Button “1” on the FLAPS lever or key F'), done: (s) => s.srf.confTarget === 2 },
+  { id: 'arm', ctl: 'speedbrake', text: T('Взведите интерцепторы (ARM) — на случай прерванного взлёта', 'Arm the ground spoilers (ARM) — for a rejected take-off'), hint: T('Кнопка ARM у рычага SPEEDBRAKE', 'ARM button by the SPEEDBRAKE lever'), done: (s) => s.ctl.spoilersArmed },
+  { id: 'toga', ctl: 'thrust', text: T('РУД в положение TOGA', 'Thrust levers to TOGA'), hint: T('Перетащите РУД до упора вверх или удерживайте Shift', 'Drag the levers fully up or hold Shift'), done: (s) => s.ctl.lever > 0.97 },
+  { id: 'roll', ctl: 'pedals', text: T('Держите ось полосы педалями, ждите VR ≈ 145 узлов', 'Keep the centreline with the pedals, wait for VR ≈ 145 kt'), hint: T('Q / E — педали', 'Q / E — pedals'), done: (s) => s.d.ias > 142 },
+  { id: 'rotate', ctl: 'stick', text: T('VR! Плавно на себя — тангаж 15°', 'VR! Ease back — 15° pitch'), hint: T('S или ↓ (или потяните ручку вниз)', 'S or ↓ (or drag the sidestick down)'), done: (s) => s.airborne && s.d.theta > 10 * DEG },
+  { id: 'gearUp', ctl: 'gear', text: T('Положительная вертикальная — шасси убрать', 'Positive climb — gear up'), hint: T('Клавиша G или рычаг GEAR', 'Key G or the GEAR lever'), done: (s) => !s.ctl.gearDown },
+  { id: 'climbThrust', ctl: 'thrust', text: T('На 1500 футов РУД в CL (набор)', 'At 1500 ft thrust levers to CL (climb)'), hint: T('Детент CL на рычаге', 'The CL detent on the lever'), done: (s) => ft(s) > 1300 && Math.abs(s.ctl.lever - DETENT.CL) < 0.05 },
+  { id: 'flaps0', ctl: 'flaps', text: T('Разгоняясь, уберите закрылки: 1 → 0', 'While accelerating, retract flaps: 1 → 0'), hint: T('Кнопка «0» или клавиша V', 'Button “0” or key V'), done: (s) => s.ctl.flapLever === 0 && s.srf.conf < 0.1 },
+  { id: 'level', ctl: 'stick', text: T('Займите 4000–6000 футов, скорость ≈ 250 узлов', 'Level off at 4000–6000 ft, about 250 kt'), hint: T('Ручкой уменьшите тангаж; газ — для скорости', 'Lower the nose with the stick; thrust sets speed'), done: (s) => ft(s) > 3800 && Math.abs(s.d.vs) < 400 && s.d.ias > 220 },
+  { id: 'turn', ctl: 'stick', text: T('Попробуйте вираж 25° и отпустите ручку — крен удержится. Потом вернитесь на курс', 'Try a 25° bank and let go — the bank holds. Then roll back to the course'), hint: T('A / D или ← / →', 'A / D or ← / →'), done: (s) => s.flags.didTurn === true && Math.abs(s.d.phi) < 4 * DEG },
+  { id: 'descent', ctl: 'thrust', text: T('За ≈ 20 NM до полосы: РУД в IDLE, нос вниз — вертикальная ≈ −1500 фт/мин', 'About 20 NM out: levers to IDLE, nose down — about −1500 ft/min'), hint: T('Расстояние до полосы — на PFD', 'Distance to the runway is on the PFD'), done: (s) => (DEST - s.pos.x) / 1852 < 22 && s.d.vs < -800 },
+  { id: 'slow', ctl: 'speedbrake', text: T('Сбросьте скорость до 210 узлов (можно интерцепторами)', 'Slow down to 210 kt (speedbrakes help)'), hint: T('SPEEDBRAKE или малый газ', 'SPEEDBRAKE or idle thrust'), done: (s) => s.d.ias < 215 },
+  { id: 'config', ctl: 'flaps', text: T('Выпускайте закрылки по шагам: 1 → 2 → 3, не превышая VFE', 'Extend flaps step by step: 1 → 2 → 3, below VFE'), hint: T('VFE показан на ленте скорости красным', 'VFE is the red band on the speed tape'), done: (s) => s.ctl.flapLever >= 3 },
+  { id: 'gearDown', ctl: 'gear', text: T('Шасси выпустить', 'Gear down'), hint: T('Клавиша G', 'Key G'), done: (s) => s.ctl.gearDown && s.srf.gear > 0.99 },
+  { id: 'full', ctl: 'flaps', text: T('Закрылки FULL, взведите интерцепторы (ARM), скорость ≈ 135 узлов', 'Flaps FULL, arm spoilers, about 135 kt'), hint: T('Пролетайте через розовые рамки глиссады', 'Fly through the magenta glide-path gates'), done: (s) => s.ctl.flapLever === 4 && s.ctl.spoilersArmed },
+  { id: 'flare', ctl: 'stick', text: T('30 футов: РУД в IDLE и плавно на себя — мягкое касание', '30 ft: levers to IDLE and ease back — a soft touchdown'), hint: T('Цель: −100…−250 фт/мин при касании', 'Aim for −100…−250 ft/min at touchdown'), done: (s) => s.everAirborne && !s.airborne },
+  { id: 'rev', ctl: 'reverse', text: T('Реверс и торможение до остановки', 'Reverse and brake to a stop'), hint: T('R — реверс, B — тормоза', 'R — reverse, B — brakes'), done: (s) => s.everAirborne && !s.airborne && s.d.gs < 3 },
+]
+export const APPROACH_STEPS: Step[] = TAKEOFF_STEPS.slice(TAKEOFF_STEPS.findIndex((x) => x.id === 'full'))
+export const CRUISE_STEPS: Step[] = TAKEOFF_STEPS.slice(TAKEOFF_STEPS.findIndex((x) => x.id === 'turn'))

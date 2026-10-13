@@ -9,6 +9,8 @@ import { CarModel } from '../models/CarModel'
 import { AircraftModel } from '../models/AircraftModel'
 import { goToHit, openVehicle, progress, search, startLearn, type Hit } from '../utils/actions'
 import type { VehicleId } from '../data/types'
+import type { ExplorerId } from '../store'
+import { useT, useLang, T, type Txt } from '../explorer/i18n'
 
 /* ---------------------------------------------------------------- loader */
 export function Loader() {
@@ -90,6 +92,8 @@ function Showcase() {
 }
 
 export function Landing() {
+  const t = useT()
+  const { lang, setLang } = useLang()
   const understood = useApp((s) => s.understood)
   void understood
   const startDemo = (v: VehicleId) => openVehicle(v, () => setTimeout(() => startLearn(VEHICLES[v], 'demo'), 1400))
@@ -103,21 +107,33 @@ export function Landing() {
       </Canvas>
       <div className="landing-content">
         <div className="land-top">
-          <span className="logo"><i />HOW IT WORKS</span>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn" onClick={() => getApp().openPanel('search')}>Search</button>
-            {all && <button className="btn" onClick={() => getApp().set({ screen: 'final' })}>Your summary</button>}
+          <span className="logo"><i />{t(T('КАК ЭТО РАБОТАЕТ', 'HOW IT WORKS'))}</span>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <div className="seg xp-lang"><button className={lang === 'ru' ? 'on' : ''} onClick={() => setLang('ru')}>RU</button><button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button></div>
+            <button className="btn" onClick={() => getApp().openPanel('search')}>{t(T('Поиск', 'Search'))}</button>
+            {all && <button className="btn" onClick={() => getApp().set({ screen: 'final' })}>{t(T('Итоги', 'Your summary'))}</button>}
           </div>
         </div>
         <section className="hero">
-          <span className="eyebrow">Explore machines from the inside</span>
-          <h1><span>UNDERSTAND</span><span>WHAT MOVES YOU.</span></h1>
-          <p>Explore the machines around you — from fuel molecules to flight controls. Интерактивный 3D-учебник: заходите внутрь, включайте потоки топлива, воздуха, масла и тока и смотрите, как всё работает.</p>
+          <span className="eyebrow">{t(T('Интерактивные инженерные симуляции', 'Interactive engineering simulations'))}</span>
+          <h1><span>{t(T('ПОЙМИ, КАК', 'UNDERSTAND'))}</span><span>{t(T('ЭТО ДВИЖЕТСЯ.', 'WHAT MOVES YOU.'))}</span></h1>
+          <p>{t(T('Двигатель в разрезе, где поршни, клапаны, турбина и коробка работают по-настоящему, а топливо, воздух и выхлоп видно потоками. И самолёт, который взлетает только от ваших рук: газ, закрылки, ручка — и всё объясняется по ходу.', 'An engine in cutaway where pistons, valves, turbo and gearbox really move, with fuel, air and exhaust shown as flows. And an airliner that only flies because you fly it: thrust, flaps, sidestick — explained as you go.'))}</p>
           <div className="cta">
-            <button className="btn primary" onClick={() => openVehicle('fortuner')}>Start exploring</button>
-            <button className="btn" onClick={() => startDemo('fortuner')}>Watch a demo</button>
+            <button className="btn primary" onClick={() => openExplorer('diesel')}>{t(T('Дизель в разрезе', 'Diesel cutaway'))}</button>
+            <button className="btn" onClick={() => openExplorer('flight')}>{t(T('Мини-полёт на A320', 'A320 mini flight'))}</button>
           </div>
         </section>
+        <div className="machines-row sims">
+          {SIMS.map((x) => (
+            <button key={x.id} className="mcard glass" onClick={() => openExplorer(x.id)}>
+              <span className="k">{t(x.k)}</span>
+              <h2>{t(x.title)}</h2>
+              <p>{t(x.text)}</p>
+              <span className="go">{t(T('Открыть →', 'Open →'))}</span>
+            </button>
+          ))}
+        </div>
+        <div className="section-title"><h3>{t(T('3D-туры по машинам', '3D machine tours'))}</h3><span className="eyebrow">{t(T('кузов, салон, системы', 'body, cabin, systems'))}</span></div>
         <div className="machines-row">
           {ORDER.map((id) => {
             const v = VEHICLES[id]
@@ -127,12 +143,12 @@ export function Landing() {
                 <span className="k">{v.line}</span>
                 <h2>{v.name}</h2>
                 <p>{v.tagline}</p>
-                <div className="meter"><span>YOUR JOURNEY<em style={{ fontStyle: 'normal', color: 'var(--text)' }}>{p}% explored</em></span><div className="bar"><i style={{ width: `${p}%` }} /></div></div>
+                <div className="meter"><span>{t(T('ИЗУЧЕНО', 'EXPLORED'))}<em style={{ fontStyle: 'normal', color: 'var(--text)' }}>{p}%</em></span><div className="bar"><i style={{ width: `${p}%` }} /></div></div>
               </button>
             )
           })}
         </div>
-        <div className="section-title"><h3>Demo scenarios</h3><span className="eyebrow">30–60 s · camera drives itself</span></div>
+        <div className="section-title"><h3>{t(T('Демо-сценарии', 'Demo scenarios'))}</h3><span className="eyebrow">{t(T('30–60 с · камера ведёт сама', '30–60 s · camera drives itself'))}</span></div>
         <div className="demos">
           {ORDER.map((id, i) => (
             <button key={id} className="demo glass" onClick={() => startDemo(id)}>
@@ -141,27 +157,19 @@ export function Landing() {
             </button>
           ))}
         </div>
-        <div className="section-title"><h3>Deep dives</h3><span className="eyebrow">see how it works up close</span></div>
-        <div className="demos">
-          {([
-            ['fortuner', 'cylinder', 'Inside the cylinder', 'Четыре такта дизеля'],
-            ['bmw', 'compare', 'Diesel vs petrol', 'Два цилиндра синхронно'],
-            ['fortuner', 'turbo', 'How turbocharging works', 'Выхлоп → турбина → компрессор'],
-            ['fortuner', 'transmission', 'How power reaches the wheels', 'Передачи, дифференциал, 4×4'],
-            ['bmw', 'brakes', 'Brakes and ABS', 'С ABS и без'],
-            ['a320', 'turbofan', 'Jet engine', 'Core flow и bypass flow'],
-          ] as const).map(([v, lab, t, sub]) => (
-            <button key={lab} className="demo glass" onClick={() => openVehicle(v, () => getApp().set({ lab: { id: lab } }))}>
-              <span className="play" />
-              <span><small>{VEHICLES[v].name}</small><b>{t}</b><small style={{ letterSpacing: 0, fontFamily: 'var(--f-ui)', fontSize: 13 }}>{sub}</small></span>
-            </button>
-          ))}
-        </div>
-        <p className="land-foot">Модели процедурные и схематичные: агрегаты расположены как в типовой компоновке, размеры кузова близки к реальным. Representative configurations — exact configuration may vary by model year, engine and market. Сайт показывает принцип работы, а не заменяет руководство по ремонту конкретного автомобиля или борта.</p>
+        <p className="land-foot">{t(T('Модели процедурные: агрегаты расположены как в типовой компоновке, цифры — представительные и приблизительные. Конкретная комплектация зависит от года, двигателя и рынка. Это учебник по принципам работы, а не руководство по ремонту или пилотированию.', 'Models are procedural: components sit as in a typical layout, numbers are representative and approximate. Exact configuration varies by model year, engine and market. This explains principles; it is not a repair or flight manual.'))}</p>
       </div>
     </div>
   )
 }
+
+const SIMS: { id: ExplorerId; k: Txt; title: Txt; text: Txt }[] = [
+  { id: 'diesel', k: T('TOYOTA FORTUNER · ДИЗЕЛЬ', 'TOYOTA FORTUNER · DIESEL'), title: T('Дизель: от бака до колёс', 'Diesel: tank to wheels'), text: T('Разрез двигателя, Common Rail, 4 такта крупно, турбина, коробка и полный привод. Запуск двигателя по шагам.', 'Engine cutaway, Common Rail, the 4 strokes up close, turbo, gearbox and 4×4. Step-by-step engine start.') },
+  { id: 'petrol', k: T('BMW 530i · БЕНЗИН', 'BMW 530i · PETROL'), title: T('Бензин: воздух + топливо + искра', 'Petrol: air + fuel + spark'), text: T('Непосредственный впрыск, свечи и искра, twin-scroll турбина, 8-ступенчатая коробка, задний привод.', 'Direct injection, spark plugs, twin-scroll turbo, 8-speed gearbox, rear-wheel drive.') },
+  { id: 'jet', k: T('A320 · ТУРБОВЕНТИЛЯТОРНЫЙ', 'A320 · TURBOFAN'), title: T('Реактивный двигатель', 'Jet engine'), text: T('Всасывание, сжатие, сгорание, выхлоп. Вентилятор, компрессоры, камера сгорания, турбины, два вала, обходной поток.', 'Suck, squeeze, bang, blow. Fan, compressors, combustor, turbines, two spools, bypass flow.') },
+  { id: 'flight', k: T('A320 · МИНИ-ПОЛЁТ', 'A320 · MINI FLIGHT'), title: T('Взлетите сами', 'Fly it yourself'), text: T('Полная физика: газ, закрылки, ручка, шасси, интерцепторы, реверс. Fly-by-wire с защитами и инструктор, который объясняет всё по ходу.', 'Full physics: thrust, flaps, sidestick, gear, spoilers, reverse. Fly-by-wire with protections and an instructor explaining everything as you go.') },
+]
+function openExplorer(id: ExplorerId) { getApp().set({ screen: 'explorer', explorer: id }) }
 
 /* ---------------------------------------------------------------- search */
 export function Search() {

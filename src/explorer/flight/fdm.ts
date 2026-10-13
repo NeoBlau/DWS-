@@ -49,7 +49,7 @@ export const CONFS: Conf[] = [
 export const LEVER = ['0', '1', '2', '3', 'FULL'] as const
 const CONF_INDEX: Record<string, number> = { '0': 0, '1': 1, '1+F': 2, '2': 3, '3': 4, FULL: 5 }
 
-function confAt(f: number) {
+export function confAt(f: number) {
   const i = clamp(Math.floor(f), 0, CONFS.length - 1), j = Math.min(CONFS.length - 1, i + 1), k = clamp(f - i, 0, 1)
   const a = CONFS[i], b = CONFS[j], L = (p: number, q: number) => p + (q - p) * k
   return { slat: L(a.slat, b.slat), flap: L(a.flap, b.flap), cl0: L(a.cl0, b.cl0), as: L(a.as, b.as) * DEG, cd: L(a.cd, b.cd), cm: L(a.cm, b.cm), vfe: L(a.vfe, b.vfe) }
@@ -73,7 +73,7 @@ export function onRunway(x: number, z: number) {
 /* ------------------------------------------------------------------ contact points (body frame) */
 type ContactKind = 'nose' | 'main' | 'tail' | 'engine' | 'wingtip' | 'belly'
 interface Contact { id: string; kind: ContactKind; r: THREE.Vector3; k: number; c: number }
-const STATIC_STROKE = 0.22
+export const STATIC_STROKE = 0.22
 const fromLayout = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z).sub(AC.cgLayout)
 const W = AC.mass * G
 export const GEAR: Contact[] = [
@@ -278,7 +278,7 @@ function flyByWire(s: Sim, dt: number) {
   const V = Math.max(d.V, 30), gn = G / V
   const qref = 3500, sched = clamp(qref / Math.max(d.qbar, 300), 0.25, 4)
   // ground → flight mode blending (A320: direct "ground law" on the runway, normal law in the air)
-  f.blend = approach(f.blend, s.airborne ? 1 : 0, 0.2, dt)
+  f.blend = approach(f.blend, s.airborne ? 1 : 0, 0.35, dt)
 
   /* ---------- pitch */
   let elevCmd: number
@@ -329,7 +329,9 @@ function flyByWire(s: Sim, dt: number) {
     f.qInt = clamp(f.qInt + qe * dt, -0.6, 0.6)
     if (!s.airborne) f.qInt *= 1 - Math.min(1, dt * 2)
     const normal = (2.6 * qe + 1.5 * f.qInt) * sched
-    elevCmd = direct * (1 - f.blend) + normal * f.blend
+    // protections are active from lift-off: inside α-prot the protected command wins regardless of the ground→flight blend
+    const b = prot ? 1 : f.blend
+    elevCmd = direct * (1 - b) + normal * b
     // auto-trim: the stabiliser slowly takes over the elevator's load so stick-free flight is trimmed
     if (s.airborne && f.blend > 0.9 && !d.inProt && !d.flare && d.nz > 0.5 && d.nz < 1.3) {
       r.ths = clamp(r.ths + clamp(0.45 * r.elev, -0.7 * DEG, 0.7 * DEG) * dt, -4 * DEG, 13.5 * DEG)
