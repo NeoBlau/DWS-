@@ -7,6 +7,7 @@ import type { OrbitControls as OrbitImpl } from 'three-stdlib'
 import { useApp } from '../../store'
 import { useT, useLang, T, type Txt } from '../i18n'
 import { A320 } from './Aircraft'
+import { EYE, LOOK } from './Cockpit'
 import { World } from './World'
 import { Pfd, Ecam, ForceLegend, useSnap, type Snap } from './Hud'
 import { AC, DEG, DEST, DETENT, H, KT, LEVER, step, advance, failEngine, type Sim } from './fdm'
@@ -78,10 +79,10 @@ function CameraRig({ orbit }: { orbit: React.MutableRefObject<OrbitImpl | null> 
       camera.up.set(0, 1, 0)
       camera.lookAt(look)
     } else if (mode === 'cockpit') {
-      bodyPoint([17.05, 3.95, -0.52], camera.position)
-      _q.copy(s.quat).multiply(new THREE.Quaternion().setFromEuler(_e.set(0, -Math.PI / 2, 0))).multiply(new THREE.Quaternion().setFromEuler(_e.set(-7 * DEG, 0, 0)))
+      bodyPoint(EYE, camera.position)
+      _q.copy(s.quat).multiply(new THREE.Quaternion().setFromEuler(_e.set(0, -Math.PI / 2 + LOOK.yaw, 0))).multiply(new THREE.Quaternion().setFromEuler(_e.set(LOOK.pitch, 0, 0)))
       camera.quaternion.copy(_q)
-      fov = 62
+      fov = 68
     } else if (mode === 'wing') {
       bodyPoint([-0.6, 4.25, -2.15], camera.position)
       bodyPoint([-4.2, 2.6, -10.5], look)
@@ -339,6 +340,24 @@ function Toasts() {
 }
 
 /* ------------------------------------------------------------------ keyboard */
+/** drag on the 3D view in the cockpit to look around */
+function useMouseLook() {
+  useEffect(() => {
+    let drag = false, lx = 0, ly = 0
+    const down = (e: PointerEvent) => { if (useFlight.getState().cam !== 'cockpit') return; if (!(e.target as HTMLElement).closest('.fs-canvas')) return; drag = true; lx = e.clientX; ly = e.clientY }
+    const move = (e: PointerEvent) => {
+      if (!drag) return
+      LOOK.yaw = Math.max(-2.4, Math.min(2.4, LOOK.yaw - (e.clientX - lx) * 0.004))
+      LOOK.pitch = Math.max(-1.1, Math.min(0.9, LOOK.pitch - (e.clientY - ly) * 0.004))
+      lx = e.clientX; ly = e.clientY
+    }
+    const up = () => { drag = false }
+    const dbl = (e: MouseEvent) => { if ((e.target as HTMLElement).closest('.fs-canvas')) { LOOK.yaw = 0; LOOK.pitch = -12 * DEG } }
+    window.addEventListener('pointerdown', down); window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('dblclick', dbl)
+    return () => { window.removeEventListener('pointerdown', down); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('dblclick', dbl) }
+  }, [])
+}
+
 function useKeyboard() {
   useEffect(() => {
     const flapsKey = (d: number) => { const c = FS.sim.ctl; c.flapLever = Math.max(0, Math.min(4, c.flapLever + d)) }
@@ -381,6 +400,7 @@ export function FlightSim() {
   const v = useSnap(15)
   const orbit = useRef<OrbitImpl | null>(null)
   useKeyboard()
+  useMouseLook()
   useEffect(() => { resetSim('gate'); return () => stopAudio() }, [])
   useEffect(() => {
     if (!import.meta.env.DEV) return

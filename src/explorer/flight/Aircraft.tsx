@@ -7,6 +7,7 @@ import { revolve, bladeRing } from '../diesel/geometry'
 import { applyFinish, type Finish } from '../surface'
 import { AC, DEG, STATIC_STROKE, confAt, G } from './fdm'
 import { FS, useFlight } from './state'
+import { Cockpit, PANES, surfacePatch } from './Cockpit'
 import type { Vec3 } from '../../data/types'
 
 /*
@@ -29,7 +30,7 @@ function useMats() {
     wingDark: mat({ color: '#c3c9cf', roughness: 0.45, metalness: 0.1, clearcoat: 0.3, finish: 'paint' }),
     leMetal: mat({ color: '#c4cad0', roughness: 0.25, metalness: 0.9, finish: 'machined' }),
     tail: mat({ color: '#163a70', roughness: 0.3, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.06, finish: 'paint' }),
-    glass: mat({ color: '#0a0f15', roughness: 0.04, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.02, side: THREE.DoubleSide }),
+    glass: mat({ color: '#0b1218', roughness: 0.03, metalness: 0.3, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.86, envMapIntensity: 1.4 }),
     tyre: mat({ color: '#141518', roughness: 0.88, metalness: 0, finish: 'rubber' }),
     chrome: mat({ color: '#e9edf1', roughness: 0.1, metalness: 1, finish: 'machined' }),
     gearPaint: mat({ color: '#d7dbe0', roughness: 0.38, metalness: 0.2, clearcoat: 0.4, finish: 'paint' }),
@@ -89,27 +90,8 @@ function Fuselage({ m }: { m: Mats }) {
     g.setAttribute('color', new THREE.BufferAttribute(col, 3))
     return g
   }, [])
-  // windshield / cockpit side windows: patches lying on the fuselage surface
-  const panes = useMemo(() => {
-    const patch = (x0: number, x1: number, a0: number, a1: number) => {
-      const N = 8, M = 8, pos: number[] = [], idx: number[] = []
-      for (let i = 0; i <= N; i++) for (let j = 0; j <= M; j++) {
-        const x = x0 + ((x1 - x0) * i) / N, a = a0 + ((a1 - a0) * j) / M, r = fusR(x) + 0.012
-        pos.push(x, fusY(x) + Math.cos(a) * r, Math.sin(a) * r)
-      }
-      for (let i = 0; i < N; i++) for (let j = 0; j < M; j++) { const p = i * (M + 1) + j; idx.push(p, p + 1, p + M + 1, p + 1, p + M + 2, p + M + 1) }
-      const g = new THREE.BufferGeometry()
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals()
-      return g
-    }
-    const list: THREE.BufferGeometry[] = []
-    for (const s of [1, -1]) {
-      list.push(patch(16.72, 17.32, s * 0.08, s * 0.62))
-      list.push(patch(16.02, 16.64, s * 0.72, s * 1.2))
-      list.push(patch(15.38, 15.92, s * 0.8, s * 1.18))
-    }
-    return list
-  }, [])
+  // windshield / cockpit side windows: patches lying on the fuselage surface (outside view), plus wipers
+  const panes = useMemo(() => PANES.map(([a, b, c, d]) => surfacePatch(a, b, Math.min(c, d), Math.max(c, d), 0.012)), [])
   // cabin window row
   const windows = useMemo(() => {
     const geo = new THREE.CapsuleGeometry(0.1, 0.13, 4, 10)
@@ -130,7 +112,8 @@ function Fuselage({ m }: { m: Mats }) {
   return (
     <group>
       <mesh geometry={geo} material={m.paint} castShadow receiveShadow />
-      {panes.map((g, i) => <mesh key={i} geometry={g} material={m.glass} />)}
+      {panes.map((g, i) => <mesh key={i} geometry={g} material={m.glass} renderOrder={4} />)}
+      {[1, -1].map((sd) => <mesh key={sd} position={[17.62, 3.86, sd * 0.42]} rotation={[sd * 0.5, 0, 1.05]} material={m.dark}><boxGeometry args={[0.025, 0.62, 0.02]} /></mesh>)}
       <primitive object={windows} />
     </group>
   )
@@ -353,6 +336,11 @@ function Forces() {
   )
 }
 
+function CockpitIfInside() {
+  const inside = useFlight((s) => s.cam === 'cockpit')
+  return inside ? <Cockpit /> : null
+}
+
 /* ------------------------------------------------------------------ the aircraft */
 export function A320({ children }: { children?: ReactNode }) {
   const m = useMats()
@@ -365,6 +353,7 @@ export function A320({ children }: { children?: ReactNode }) {
     // the body frame origin is the centre of gravity: shift the drawing so the CG sits at 0
     <group position={[-AC.cgLayout.x, -AC.cgLayout.y, 0]}>
       <Fuselage m={m} />
+      <CockpitIfInside />
       <Wing side={1} m={m} />
       <Wing side={-1} m={m} />
       <NoseGear m={m} />
