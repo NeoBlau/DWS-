@@ -16,6 +16,7 @@ import { applyInputs } from './input'
 import { phaseNarration, explain, eventText, type Topic } from './narration'
 import { FULL_STEPS, TAKEOFF_STEPS, APPROACH_STEPS, CRUISE_STEPS, type Ctl } from './guide'
 import { startAudio, stopAudio, updateAudio } from './audio'
+import { PAD } from '../gamepad'
 
 /* ------------------------------------------------------------------ simulation loop: fixed 240 Hz steps */
 function SimLoop() {
@@ -234,6 +235,7 @@ function ControlPanel({ v }: { v: Snap }) {
           <button className="btn sm" onPointerDown={() => FS.keys.add('trimUp')} onPointerUp={() => FS.keys.delete('trimUp')} onPointerLeave={() => FS.keys.delete('trimUp')}>TRIM ▲ ]</button>
         </div>}
       </div>
+      <PadInfo />
       <span className="eyebrow">{t(T('Тренировка отказов', 'Failure training'))}</span>
       <div className="fs-seg wrap">
         <button className="btn sm" disabled={!v.airborne} onClick={() => failEngine(FS.sim, 0)}>{t(T('Отказ двиг. 1', 'Fail engine 1'))}</button>
@@ -460,6 +462,20 @@ const CRASH: Record<string, Txt> = {
   belly: T('Посадка на брюхо с большой вертикальной скоростью.', 'A belly landing with a high sink rate.'),
   tail: T('Сильный удар хвостом о полосу разрушил хвостовую часть.', 'A violent tail strike destroyed the aft fuselage.'),
   terrain: T('Столкновение с землёй.', 'Controlled flight into terrain.'),
+}
+
+function PadInfo() {
+  const t = useT()
+  const [id, setId] = useState('')
+  useEffect(() => { const k = setInterval(() => setId(PAD.connected ? PAD.id : ''), 1000); return () => clearInterval(k) }, [])
+  if (!id) return <p className="fs-pad">{t(T('🎮 Подключите геймпад и нажмите любую кнопку', '🎮 Connect a gamepad and press any button'))}</p>
+  return (
+    <details className="fs-pad on">
+      <summary>{t(T('🎮 Геймпад подключён', '🎮 Gamepad connected'))}</summary>
+      <p>{t(T('Левый стик — ручка · правый стик X — педали, Y — взгляд в кабине · RT/LT — газ · RB/LB — закрылки · A — тормоза · B — реверс · X — шасси · Y — камера · ↑/↓ — интерцепторы · L3 — ARM · ← — буксир · → — MASTER · Back — стояночный · Start — пауза',
+        'Left stick — sidestick · right stick X — pedals, Y — cockpit look · RT/LT — thrust · RB/LB — flaps · A — brakes · B — reverse · X — gear · Y — camera · ↑/↓ — speedbrake · L3 — ARM · ← — pushback · → — MASTER · Back — parking brake · Start — pause'))}</p>
+    </details>
+  )
 }
 
 /** visual docking guidance on the stand: distance to the stop line and left / right */
