@@ -13,7 +13,7 @@ import { EYE, LOOK } from './Cockpit'
 import { World } from './World'
 import { Pfd, Ecam, ForceLegend, useSnap, type Snap } from './Hud'
 import { AC, DEG, DEST, DETENT, H, KT, LEVER, step, advance, failEngine, type Sim } from './fdm'
-import { FS, useFlight, resetSim, type CamMode } from './state'
+import { FS, useFlight, resetSim, PENDING_FLIGHT, type CamMode } from './state'
 import { applyInputs } from './input'
 import { phaseNarration, explain, eventText, type Topic } from './narration'
 import { FULL_STEPS, TAKEOFF_STEPS, APPROACH_STEPS, CRUISE_STEPS, type Ctl } from './guide'
@@ -407,7 +407,12 @@ export function FlightSim() {
   const orbit = useRef<OrbitImpl | null>(null)
   useKeyboard()
   useMouseLook()
-  useEffect(() => { resetSim('gate'); return () => stopAudio() }, [])
+  useEffect(() => {
+    const p = PENDING_FLIGHT.v; setTimeout(() => { if (PENDING_FLIGHT.v === p) PENDING_FLIGHT.v = null }, 0)
+    if (p) { useFlight.getState().set({ ac: p.ac ?? 'a320', cam: p.cam ?? 'chase', design: !!p.design }); resetSim(p.start); p.patch?.(FS.sim) }
+    else resetSim('gate')
+    return () => stopAudio()
+  }, [])
   useEffect(() => {
     if (!import.meta.env.DEV) return
     Object.assign(window, { __flight: { FS, resetSim, advance: (sec: number) => advance(FS.sim, sec), ui: useFlight } })

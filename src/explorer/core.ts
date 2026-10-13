@@ -80,6 +80,8 @@ export const useExp = create<ExpStore>((set) => ({
   set: (p) => set(p),
 }))
 export const exp = () => useExp.getState()
+/** a deep link from the Study section: which track / moment / mode an explorer should open at */
+export const PENDING: { start: { track: string; t: number; mode?: ManualMode; playing?: boolean } | null } = { start: null }
 
 /** apply the user's manual mode on top of the scripted state */
 export function withMode(s: SceneState, mode: ManualMode, flowOff: FlowId[]): SceneState {

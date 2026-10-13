@@ -5,6 +5,7 @@ import { MachineView } from './components/MachineView'
 import { Final, Journey, Landing, Loader, Search, Settings } from './components/Screens'
 import { useSound } from './audio/sound'
 import { ExplorerHost } from './explorer/ExplorerHost'
+import { Study } from './components/Study'
 
 function useCompletionToast() {
   const understood = useApp((s) => s.understood)
@@ -44,6 +45,7 @@ export default function App() {
       {screen === 'machine' && vehicleId && <MachineView def={VEHICLES[vehicleId]} />}
       {screen === 'final' && <Final />}
       {screen === 'explorer' && <ExplorerHost />}
+      {screen === 'study' && <Study />}
       <Search />
       {screen === 'machine' && <><Settings /><Journey /></>}
       {toast && <div className="toast">{toast}</div>}

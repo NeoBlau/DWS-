@@ -4,7 +4,7 @@ import { OrbitControls, Environment, Lightformer } from '@react-three/drei'
 import { EffectComposer, Bloom, Vignette, N8AO, SMAA } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitImpl } from 'three-stdlib'
-import { useExp, exp, withMode, live, activeAt, CLOCK, seek, type ExplorerDef, type ManualMode, type Track } from './core'
+import { useExp, exp, withMode, live, activeAt, CLOCK, seek, PENDING, type ExplorerDef, type ManualMode, type Track } from './core'
 import { S, CUT, PLAY, updateMaterials } from './materials'
 import { useT, useLang, UI, T, type Txt } from './i18n'
 import { useApp } from '../store'
@@ -242,12 +242,18 @@ export function Explorer({ def, cutOpen, controlsPanel, children, cam, floorY }:
   const quality = useApp((s) => s.quality)
   const controls = useRef<OrbitImpl | null>(null)
   const track = def.tracks.find((k) => k.id === st.track) ?? def.tracks[0]
-  useEffect(() => { seek(0); st.set({ track: def.tracks[0].id, playing: true, follow: true, mode: 'auto', flowOff: [] }) }, [def]) // eslint-disable-line
+  useEffect(() => {
+    // cleared after the tick so React's double-invoked effects in development see the same deep link
+    const p = PENDING.start; setTimeout(() => { if (PENDING.start === p) PENDING.start = null }, 0)
+    const tr = p && def.tracks.some((k) => k.id === p.track) ? p.track : def.tracks[0].id
+    seek(p?.t ?? 0, true)
+    st.set({ track: tr, playing: p?.playing ?? true, follow: true, mode: p?.mode ?? 'auto', flowOff: [] })
+  }, [def]) // eslint-disable-line
   const p0 = useMemo(() => track.camera(0), [def]) // eslint-disable-line
   const modes: [ManualMode, Txt][] = [['auto', UI.auto], ['walk', UI.walk], ['cutaway', UI.cutaway], ['xray', UI.xray], ['flow', UI.flow], ['exploded', UI.exploded]]
   return (
     <div className="xp">
-      <Canvas className="xp-canvas" shadows dpr={quality === 'high' ? [1, 1.75] : [1, 1.25]}
+      <Canvas className="xp-canvas" shadows dpr={quality === 'high' ? [1, 2] : [1, 1.25]}
         gl={{ stencil: true, antialias: quality !== 'high', localClippingEnabled: true } as THREE.WebGLRendererParameters}
         camera={{ position: p0.pos, fov: cam.fov, near: cam.near, far: cam.far }}
         onCreated={({ gl }) => { gl.localClippingEnabled = true; gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.08; gl.shadowMap.type = THREE.PCFSoftShadowMap }}>
@@ -261,7 +267,7 @@ export function Explorer({ def, cutOpen, controlsPanel, children, cam, floorY }:
         {floorY !== undefined && <group position={[-1, 0, 0]}><Floor y={floorY} /></group>}
         <Director def={def} cutOpen={cutOpen} controls={controls} />
         <Projector def={def} />
-        <OrbitControls ref={controls as never} makeDefault enableDamping dampingFactor={0.08} target={p0.target} onStart={() => exp().set({ follow: false })} />
+        <OrbitControls ref={controls as never} makeDefault enableDamping dampingFactor={0.08} target={p0.target} minDistance={0.04} maxDistance={40} zoomSpeed={1.2} onStart={() => exp().set({ follow: false })} />
         {quality === 'high' && (
           <EffectComposer multisampling={0} stencilBuffer>
             <N8AO aoRadius={def.ao ?? 0.08} distanceFalloff={0.6} intensity={2.4} quality="medium" halfRes />
@@ -284,6 +290,7 @@ export function Explorer({ def, cutOpen, controlsPanel, children, cam, floorY }:
         <ChapterNav track={track} />
         <div className="xp-right">
           <div className="seg xp-lang"><button className={lang === 'ru' ? 'on' : ''} onClick={() => setLang('ru')}>RU</button><button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button></div>
+          <button className={`btn sm ${quality === 'high' ? 'on' : ''}`} title={t(T('Высокая чёткость: больше пикселей, тени и затенение', 'High definition: more pixels, shadows and occlusion'))} onClick={() => useApp.getState().set({ quality: quality === 'high' ? 'low' : 'high' })}>HD</button>
           <button className="btn sm" onClick={() => st.set({ follow: true, mode: 'auto' })}>{t(UI.reset)}</button>
         </div>
       </div>
@@ -305,6 +312,7 @@ export function Explorer({ def, cutOpen, controlsPanel, children, cam, floorY }:
         <p className="xp-note">{t(def.note)}</p>
       </aside>
       <Caption track={track} />
+      <p className="xp-zoom-hint">{t(T('Колесо — приблизить · тянуть — вращать · правая кнопка — сдвинуть · «Камера следует» — вернуть сценарий', 'Wheel — zoom · drag — orbit · right-drag — pan · “Follow camera” — back to the story'))}</p>
       <Playback track={track} />
     </div>
   )

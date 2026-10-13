@@ -110,6 +110,7 @@ export function Landing() {
           <span className="logo"><i />{t(T('КАК ЭТО РАБОТАЕТ', 'HOW IT WORKS'))}</span>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <div className="seg xp-lang"><button className={lang === 'ru' ? 'on' : ''} onClick={() => setLang('ru')}>RU</button><button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button></div>
+            <button className="btn" onClick={() => getApp().set({ screen: 'study' })}>{t(T('Изучение', 'Study'))}</button>
             <button className="btn" onClick={() => getApp().openPanel('search')}>{t(T('Поиск', 'Search'))}</button>
             {all && <button className="btn" onClick={() => getApp().set({ screen: 'final' })}>{t(T('Итоги', 'Your summary'))}</button>}
           </div>
@@ -120,7 +121,8 @@ export function Landing() {
           <p>{t(T('Двигатель в разрезе, где поршни, клапаны, турбина и коробка работают по-настоящему, а топливо, воздух и выхлоп видно потоками. И самолёт, который взлетает только от ваших рук: газ, закрылки, ручка — и всё объясняется по ходу.', 'An engine in cutaway where pistons, valves, turbo and gearbox really move, with fuel, air and exhaust shown as flows. And an airliner that only flies because you fly it: thrust, flaps, sidestick — explained as you go.'))}</p>
           <div className="cta">
             <button className="btn primary" onClick={() => openExplorer('diesel')}>{t(T('Дизель в разрезе', 'Diesel cutaway'))}</button>
-            <button className="btn" onClick={() => openExplorer('flight')}>{t(T('Мини-полёт на A320', 'A320 mini flight'))}</button>
+            <button className="btn" onClick={() => openExplorer('flight')}>{t(T('Полёт на A320', 'Fly the A320'))}</button>
+            <button className="btn" onClick={() => getApp().set({ screen: 'study' })}>{t(T('Изучение узлов', 'Study the parts'))}</button>
           </div>
         </section>
         <div className="machines-row sims">

@@ -28,6 +28,9 @@ export const useFlight = create<UI>((set) => ({
   set: (p) => set(p),
 }))
 
+/** a deep link from the Study section */
+export const PENDING_FLIGHT: { v: { start: Start; cam?: CamMode; ac?: 'a320' | 'strizh'; design?: boolean; patch?: (s: Sim) => void } | null } = { v: null }
+
 export function resetSim(start: Start) {
   FS.sim = createSim(start, SPECS[useFlight.getState().ac])
   FS.wheelRot = [0, 0, 0]

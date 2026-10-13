@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { FlowKind, LabId, LearnStep, SceneAction, Shot, SystemId, VehicleId } from './data/types'
 
-export type Screen = 'loading' | 'landing' | 'machine' | 'final' | 'explorer'
+export type Screen = 'loading' | 'landing' | 'machine' | 'final' | 'explorer' | 'study'
 export type ExplorerId = 'diesel' | 'petrol' | 'jet' | 'flight'
 export type Level = 'beginner' | 'engineer'
 export type Tray = null | 'flows' | 'walk' | 'exploded' | 'drive' | 'controls' | 'flight'
