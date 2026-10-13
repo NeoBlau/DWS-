@@ -138,4 +138,6 @@ export interface ExplorerDef {
   labels: LabelDef[]
   flows: { id: FlowId; label: Txt; color: string }[]
   sky: [string, string, string]
+  /** ambient-occlusion radius in scene units (default 0.08 for a ~0.5 m engine) */
+  ao?: number
 }

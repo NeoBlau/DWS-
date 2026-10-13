@@ -281,7 +281,7 @@ export function makeEngineDef(s: EngineSpec): ExplorerDef {
       { id: 'power', label: T('Мощность', 'Power'), color: '#ffd36b' },
       { id: 'electric', label: T('Ток', 'Electricity'), color: '#a98bff' },
     ],
-    sky: ['#2a2f4a', '#6c6a8c', '#2b2738'],
+    sky: ['#0f1115', '#2a2d33', '#16181c'],
   }
 }
 

@@ -717,10 +717,6 @@ export function Powertrain({ s }: { s: EngineSpec }) {
       <Driveline s={s} />
       <Flows s={s} />
       <Charge s={s} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-1, -s.axleY * 0 - s.wheelR + s.axleY, 0]} receiveShadow>
-        <planeGeometry args={[14, 8]} />
-        <shadowMaterial opacity={0.35} />
-      </mesh>
     </group>
   )
 }

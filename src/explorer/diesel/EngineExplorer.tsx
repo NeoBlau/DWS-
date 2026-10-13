@@ -40,7 +40,7 @@ function EnginePanel({ petrol }: { petrol: boolean }) {
 export function EngineExplorer({ petrol }: { petrol: boolean }) {
   const def = useMemo(() => makeEngineDef(petrol ? PETROL : DIESEL), [petrol])
   return (
-    <Explorer def={def} cutOpen={0} cam={{ fov: 38, near: 0.01, far: 900 }} controlsPanel={<EnginePanel petrol={petrol} />}>
+    <Explorer def={def} cutOpen={0} cam={{ fov: 38, near: 0.01, far: 900 }} floorY={(petrol ? PETROL : DIESEL).axleY - (petrol ? PETROL : DIESEL).wheelR} controlsPanel={<EnginePanel petrol={petrol} />}>
       <Powertrain s={petrol ? PETROL : DIESEL} />
     </Explorer>
   )

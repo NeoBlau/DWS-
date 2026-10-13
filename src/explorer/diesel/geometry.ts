@@ -16,7 +16,10 @@ export function slab(key: string, w: number, d: number, h: number, holes: Hole[]
       if ('c' in hl) { const p = new THREE.Path(); p.absarc(hl.c[0], -hl.c[1], hl.r, 0, Math.PI * 2, true); s.holes.push(p) }
       else { const [x0, z0, x1, z1] = hl.rect; s.holes.push(roundedRect(x0, -z1, x1, -z0, hl.round ?? 0.008, true)) }
     })
-    const g = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false, curveSegments: 28 })
+    // a small chamfer on every edge: real castings are never knife-sharp, and the rounded edge catches highlights
+    const bv = Math.min(0.0025, h * 0.08)
+    const g = new THREE.ExtrudeGeometry(s, { depth: Math.max(0.0005, h - 2 * bv), bevelEnabled: true, bevelThickness: bv, bevelSize: bv * 0.8, bevelOffset: -bv * 0.8, bevelSegments: 2, curveSegments: 28 })
+    g.translate(0, 0, bv)
     g.rotateX(-Math.PI / 2)
     g.computeVertexNormals()
     return g

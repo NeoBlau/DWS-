@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
-import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing'
+import { OrbitControls, Environment, Lightformer } from '@react-three/drei'
+import { EffectComposer, Bloom, Vignette, N8AO, SMAA } from '@react-three/postprocessing'
 import * as THREE from 'three'
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import type { OrbitControls as OrbitImpl } from 'three-stdlib'
 import { useExp, exp, withMode, live, activeAt, CLOCK, seek, type ExplorerDef, type ManualMode, type Track } from './core'
 import { S, CUT, PLAY, updateMaterials } from './materials'
@@ -21,15 +20,36 @@ function Sky({ colors }: { colors: [string, string, string] }) {
   return <mesh material={mat} scale={400}><sphereGeometry args={[1, 32, 16]} /></mesh>
 }
 
+/** studio lighting: soft boxes reflected by metals, the way product photography is lit */
 function Env() {
-  const { gl, scene } = useThree()
-  useEffect(() => {
-    const pm = new THREE.PMREMGenerator(gl)
-    const env = pm.fromScene(new RoomEnvironment(), 0.03).texture
-    scene.environment = env; scene.environmentIntensity = 0.75
-    return () => { env.dispose(); pm.dispose() }
-  }, [gl, scene])
-  return null
+  return (
+    <Environment resolution={256} frames={1} environmentIntensity={0.9}>
+      <color attach="background" args={['#15181d']} />
+      <Lightformer form="rect" intensity={3.2} color="#fff4e6" position={[0, 6, 1]} rotation-x={Math.PI / 2} scale={[10, 5, 1]} />
+      <Lightformer form="rect" intensity={1.6} color="#dfe9ff" position={[-6, 2, 3]} rotation-y={Math.PI / 2} scale={[8, 2.2, 1]} />
+      <Lightformer form="rect" intensity={1.4} color="#ffe3c4" position={[6, 1.5, -2]} rotation-y={-Math.PI / 2} scale={[8, 1.6, 1]} />
+      <Lightformer form="rect" intensity={0.9} color="#ffffff" position={[0, 1.2, 7]} scale={[12, 1, 1]} />
+      <Lightformer form="ring" intensity={1.2} color="#ffffff" position={[3, 4, -5]} scale={2.5} />
+      <mesh scale={30} position={[0, -10, 0]} rotation-x={-Math.PI / 2}><planeGeometry /><meshBasicMaterial color="#2a2b2e" /></mesh>
+    </Environment>
+  )
+}
+
+/** dark satin studio floor fading into the backdrop; catches the shadows */
+function Floor({ y }: { y: number }) {
+  const alpha = useMemo(() => {
+    const c = document.createElement('canvas'); c.width = c.height = 256
+    const g = c.getContext('2d')!, gr = g.createRadialGradient(128, 128, 10, 128, 128, 128)
+    gr.addColorStop(0, '#fff'); gr.addColorStop(0.55, '#bbb'); gr.addColorStop(1, '#000')
+    g.fillStyle = gr; g.fillRect(0, 0, 256, 256)
+    return new THREE.CanvasTexture(c)
+  }, [])
+  return (
+    <mesh rotation-x={-Math.PI / 2} position={[0, y, 0]} receiveShadow>
+      <circleGeometry args={[9, 64]} />
+      <meshStandardMaterial color="#202227" roughness={0.62} metalness={0.15} alphaMap={alpha} transparent depthWrite={false} />
+    </mesh>
+  )
 }
 
 /* ------------------------------------------------------------------ director: timeline → scene */
@@ -212,8 +232,8 @@ function Caption({ track }: { track: Track }) {
 }
 
 /* ------------------------------------------------------------------ shell */
-export function Explorer({ def, cutOpen, controlsPanel, children, cam }: {
-  def: ExplorerDef; cutOpen: number; controlsPanel?: ReactNode; children: ReactNode; cam: { fov: number; near: number; far: number }
+export function Explorer({ def, cutOpen, controlsPanel, children, cam, floorY }: {
+  def: ExplorerDef; cutOpen: number; floorY?: number; controlsPanel?: ReactNode; children: ReactNode; cam: { fov: number; near: number; far: number }
 }) {
   const t = useT()
   const lang = useLang((s) => s.lang)
@@ -233,16 +253,19 @@ export function Explorer({ def, cutOpen, controlsPanel, children, cam }: {
         onCreated={({ gl }) => { gl.localClippingEnabled = true; gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.08; gl.shadowMap.type = THREE.PCFSoftShadowMap }}>
         <Sky colors={def.sky} />
         <Env />
-        <hemisphereLight args={['#e8eefc', '#3b2f44', 0.55]} />
-        <directionalLight position={[4, 7, 5]} intensity={2.1} color="#fff1df" castShadow shadow-mapSize={[2048, 2048]} shadow-bias={-0.0004}
+        <hemisphereLight args={['#e8eefc', '#2f3036', 0.35]} />
+        <directionalLight position={[4, 7, 5]} intensity={2.1} color="#fff1df" castShadow shadow-mapSize={quality === 'high' ? [4096, 4096] : [2048, 2048]} shadow-bias={-0.0003} shadow-normalBias={0.002}
           shadow-camera-left={-4} shadow-camera-right={4} shadow-camera-top={4} shadow-camera-bottom={-4} shadow-camera-near={0.5} shadow-camera-far={30} />
         <directionalLight position={[-5, 2.5, -4]} intensity={0.9} color="#a9c4ff" />
         {children}
+        {floorY !== undefined && <group position={[-1, 0, 0]}><Floor y={floorY} /></group>}
         <Director def={def} cutOpen={cutOpen} controls={controls} />
         <Projector def={def} />
         <OrbitControls ref={controls as never} makeDefault enableDamping dampingFactor={0.08} target={p0.target} onStart={() => exp().set({ follow: false })} />
         {quality === 'high' && (
-          <EffectComposer multisampling={4} stencilBuffer>
+          <EffectComposer multisampling={0} stencilBuffer>
+            <N8AO aoRadius={def.ao ?? 0.08} distanceFalloff={0.6} intensity={2.4} quality="medium" halfRes />
+            <SMAA />
             <Bloom mipmapBlur intensity={0.85} luminanceThreshold={0.78} luminanceSmoothing={0.2} radius={0.75} />
             <Vignette eskil={false} offset={0.25} darkness={0.6} />
           </EffectComposer>

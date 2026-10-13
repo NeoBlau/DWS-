@@ -5,6 +5,7 @@ import type { SceneState, FlowId } from './core'
 import { baseState } from './core'
 import { curve, glowSprite } from '../utils/geom'
 import type { Vec3 } from '../data/types'
+import { applyFinish, inferFinish, type Finish } from './surface'
 
 /* ------------------------------------------------------------------ live smoothed scene state */
 export const S: SceneState = baseState()
@@ -35,22 +36,25 @@ export interface MatOpts {
   side?: THREE.Side
   plane?: THREE.Plane
   noXray?: boolean
+  finish?: Finish // micro-surface; inferred from metal/rough/casing when omitted
 }
 
 export function makeMat(o: MatOpts) {
   const m = new THREE.MeshPhysicalMaterial({
     color: o.color, metalness: o.metal ?? 0.7, roughness: o.rough ?? 0.35, clearcoat: o.clear ?? 0,
-    clearcoatRoughness: 0.2, transparent: o.opacity !== undefined && o.opacity < 1, opacity: o.opacity ?? 1,
+    clearcoatRoughness: 0.12, transparent: o.opacity !== undefined && o.opacity < 1, opacity: o.opacity ?? 1,
     emissive: o.emissive ?? '#000000', emissiveIntensity: o.emissiveIntensity ?? 1, side: o.side ?? THREE.FrontSide,
   })
   if (o.casing) { m.clippingPlanes = [o.plane ?? CUT]; m.clipShadows = true }
+  m.envMapIntensity = (o.metal ?? 0.7) > 0.6 ? 1.15 : 0.9
+  applyFinish(m, o.finish ?? inferFinish(o))
   const e: Entry = { m, base: m.color.clone(), baseEm: m.emissive.clone(), baseEmI: m.emissiveIntensity, casing: !!o.casing, comp: o.comp, keepLit: o.keepLit, noXray: o.noXray }
   registry.add(e)
   return { m, dispose: () => { registry.delete(e); m.dispose() } }
 }
 
 export function useMat(o: MatOpts) {
-  const r = useMemo(() => makeMat(o), [o.color, o.metal, o.rough, o.casing, o.comp, o.emissive, o.opacity]) // eslint-disable-line
+  const r = useMemo(() => makeMat(o), [o.color, o.metal, o.rough, o.casing, o.comp, o.emissive, o.opacity, o.finish]) // eslint-disable-line
   useEffect(() => () => r.dispose(), [r])
   return r.m
 }
