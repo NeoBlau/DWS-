@@ -131,10 +131,10 @@ export const STRIZH: Spec = {
  *    re-energise the wake instead of accelerating fresh air — ≈ 8 % less propulsive power;
  *  · the whole body lifts; outer wing panels fold at the gate (52 m in the air, 36 m on the ground);
  *  · any core can feed every fan: losing one core gives no asymmetric thrust at all.
- * Numbers are a conceptual design computed with the same model as the A320, not certified data.
+ * Numbers are a conceptual design computed with the same model as the F320, not certified data.
  */
 export const VORTEX: Spec = {
-  id: 'vortex', arch: 'electric', v1: 110, vr: 115, fuelKind: 'lh2', lhv: 120, fuelLow: 400, crossTie: true, mdd: 0.8, cruiseAt: { mach: 0.84, alt: 13100 },
+  id: 'vortex', arch: 'electric', v1: 124, vr: 128, fuelKind: 'lh2', lhv: 120, fuelLow: 400, crossTie: true, mdd: 0.8, cruiseAt: { mach: 0.8, alt: 12500 },
   wingCap: 0, fuelArm: 0, oew: 64000, payload: 22800, fuelMax: 4000, fuelStart: 2600, refMass: 92000,
   S: 406, b: 56, c: 12.7, iw: 1.5 * DEG, CLA: 4.6, CD0: 0.0086, CDgear: 0.0045, e: 0.92,
   I: V3(4.6e6, 9.4e6, 6.2e6),
@@ -162,7 +162,7 @@ export const VORTEX: Spec = {
 }
 export const SPECS: Record<Spec['id'], Spec> = { a320: A320, strizh: STRIZH, vortex: VORTEX }
 
-/** kept for components written against the A320 only */
+/** kept for components written against the F320 only */
 export const AC = { ...A320, mass: A320.refMass }
 export const CONFS = A320.confs
 export const LEVER = ['0', '1', '2', '3', 'FULL'] as const
@@ -367,7 +367,11 @@ function trimSim(s: Sim) {
   const V = s.vel.length(), gam = Math.asin(clamp(s.vel.y / V, -1, 1)), W = ph.ms.m * G
   const ev = (al: number, ths: number) => aeroForces(aero, { rho: atm.rho, a: atm.a, mu: 1.7e-5, v: [V * Math.cos(al), -V * Math.sin(al), 0], w: [0, 0, 0], cg: ph.ms.cg,
     ctl: { elev: 0, ths, ail: 0, rud: 0, splL: 0, splR: 0, gnd: 0, flap: conf.flap, slat: conf.slat, gear: s.srf.gear, flapL: 1, flapR: 1 }, ground: { on: false, n: [0, 1, 0], d: 0 }, t: 0 })
-  let al = 3 * DEG, th = 0
+  // starting guess from lift alone (secant), so Newton does not start inside a shock stall at high Mach
+  let al = 0, th = 0
+  { let a0 = 0, l0 = ev(0, 0).lift - W * Math.cos(gam), a1 = 1.5 * DEG, l1 = ev(a1, 0).lift - W * Math.cos(gam)
+    for (let i = 0; i < 4 && Math.abs(l1 - l0) > 1; i++) { const a2 = a1 - (l1 * (a1 - a0)) / (l1 - l0); a0 = a1; l0 = l1; a1 = clamp(a2, -4 * DEG, 14 * DEG); l1 = ev(a1, 0).lift - W * Math.cos(gam) }
+    al = a1 }
   for (let it = 0; it < 12; it++) {
     const r0 = ev(al, th), e1 = r0.lift - W * Math.cos(gam), e2 = r0.M[2]
     const ra = ev(al + 0.2 * DEG, th), rt = ev(al, th + 0.2 * DEG)
@@ -403,7 +407,7 @@ function engineThrust(s: Sim, e: GasState, target: number, amb: { T0: number; p0
   const pitch = g.kind === 'turbofan' ? 1 : lowPitch(leverFor(s.spec, target), true)
   const o = engineStep(e, g, des, amb, { target, fuel: true, ignite: true, starter: 0, rev: 0, bleed: 0, leverStart: 0, n2min: 0.66, beta: pitch }, dt)
   let T = o.thrust
-  if (g.kind === 'turboelectric') T += ((g.fans ?? 8) / 2) * bliFan((o.Pshaft * 0.975 * pitch) / (g.fans ?? 8), amb.V, amb.rho, des.fan!.Ae, g.bli ?? 0)
+  if (g.kind === 'turboelectric') T += ((g.fans ?? 8) / 2) * bliFan((o.Pshaft * 0.975 * pitch) / ((g.fans ?? 8) / 2), amb.V, amb.rho, des.fan!.Ae, g.bli ?? 0)
   return T
 }
 /** FADEC target from the thrust lever: fan speed N1 (turbofan) or core speed N2 (open fan, turbo-electric) */

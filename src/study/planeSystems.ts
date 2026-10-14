@@ -2,7 +2,7 @@ import { T } from '../explorer/i18n'
 import type { Part, Pipe, SystemDef, St, Tone } from './atlasTypes'
 
 /*
- * Aircraft systems atlas — Airbus A320 family (representative), and the «Вихрь-240» concept.
+ * Aircraft systems atlas — Fiber F320 family (representative), and the «Вихрь-240» concept.
  * The first entry is a live trainer: the same systems model the flight simulator runs on.
  */
 const P = (id: string, x: number, y: number, w: number, h: number, ru: string, en: string, iru: string, ien: string, tone?: Tone): Part => ({ id, x, y, w, h, label: T(ru, en), info: T(iru, ien), tone })
@@ -10,7 +10,7 @@ const L = (tone: Tone, pts: [number, number][], flow?: (s: St) => number, w?: nu
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
 const trainer: SystemDef = {
-  id: 'trainer', group: 'plane', title: T('Тренажёр систем A320 — живой', 'A320 systems trainer — live'),
+  id: 'trainer', group: 'plane', title: T('Тренажёр систем F320 — живой', 'F320 systems trainer — live'),
   lead: T('Холодный обесточенный самолёт у терминала. Это та же модель систем, на которой летает симулятор: включайте аккумуляторы, питание, ВСУ, отбор воздуха, насосы, выставку ИНС и запускайте двигатели — и смотрите, как оживают электросеть, гидросистемы и топливо.', 'A cold, dark aircraft at the gate. It is the same systems model the simulator flies on: switch on the batteries, power, APU, bleed, pumps, IR alignment and start the engines — and watch the electrics, hydraulics and fuel come alive.'),
   widget: 'trainer', parts: [], pipes: [],
   how: [
@@ -141,7 +141,7 @@ const nav: SystemDef = {
 /* ------------------------------------------------------------------ autoflight (honest: not in the sim) */
 const auto: SystemDef = {
   id: 'auto', group: 'plane', title: T('Автопилот и автомат тяги', 'Autopilot and autothrust'),
-  lead: T('В тренажёре автопилота нет — летите сами. Но вот как это устроено в настоящем A320.', 'The simulator has no autopilot — you fly. But here is how it works on a real A320.'),
+  lead: T('В тренажёре автопилота нет — летите сами. Но вот как это устроено в настоящем F320.', 'The simulator has no autopilot — you fly. But here is how it works on a real F320.'),
   parts: [
     P('fcu', 40, 60, 220, 60, 'FCU (панель на козырьке)', 'FCU (glareshield)', 'Скорость, курс, высота, вертикальная; кнопки AP1/AP2, A/THR, LOC, APPR.', 'Speed, heading, altitude, vertical speed; AP1/AP2, A/THR, LOC, APPR buttons.', 'ctrl'),
     P('fmgc', 320, 60, 180, 60, 'FMGC 1, 2', 'FMGC 1, 2', 'Вычисляют команды наведения.', 'Compute the guidance commands.', 'ctrl'),
@@ -174,7 +174,7 @@ const press: SystemDef = {
     return { values: { cabin: `${Math.round(cab)} ft · ΔP ${dp.toFixed(1)} psi`, ofv: s.packs ? `${Math.round(20 + s.alt / 1000)} %` : 'OPEN' }, warn: cab > 9550 ? ['cabin'] : [],
       note: cab > 14000 ? T('Без наддува на этой высоте сознание сохраняется 15–60 секунд. Маски выпадают автоматически, экипаж выполняет экстренное снижение до 10 000 футов.', 'Unpressurised at this altitude, useful consciousness lasts 15–60 seconds. The masks drop automatically and the crew makes an emergency descent to 10,000 ft.') : T(`Перепад ${dp.toFixed(1)} psi: на каждый квадратный метр обшивки давит ≈ ${(dp * 703).toFixed(0)} кг изнутри — фюзеляж работает как баллон.`, `Differential ${dp.toFixed(1)} psi: every square metre of skin is pushed out by ≈ ${(dp * 703).toFixed(0)} kg — the fuselage works like a pressure vessel.`) }
   },
-  how: [T('Каждый полёт — цикл «надули-сдули» для фюзеляжа; усталостный ресурс A320 — ≈ 60 000 таких циклов.', 'Each flight is one inflate–deflate cycle for the fuselage; an A320’s fatigue life is ≈ 60,000 such cycles.')],
+  how: [T('Каждый полёт — цикл «надули-сдули» для фюзеляжа; усталостный ресурс F320 — ≈ 60 000 таких циклов.', 'Each flight is one inflate–deflate cycle for the fuselage; an F320’s fatigue life is ≈ 60,000 such cycles.')],
   donts: [T('Не запускать двигатели с включёнными PACK (в тренажёре — медленный запуск).', 'Do not start the engines with the packs on (in the trainer — a slow start).'), T('Не взлетать с выключенными PACK без нужды.', 'Do not take off with the packs off without reason.')],
   numbers: [[T('Макс. перепад', 'Max differential'), '8.06 psi'], [T('Высота в кабине на эшелоне', 'Cabin altitude at cruise'), '≤ 8000 ft']],
   sim: 'flight',
@@ -217,11 +217,11 @@ const comms: SystemDef = {
 const rde: SystemDef = {
   id: 'rde', group: 'vortex', title: T('Ротационный детонационный турбогенератор', 'Rotating detonation turbo-generator'),
   lead: T('Главное новшество «Вихря»: топливо горит не пламенем, а в ударной волне, бегущей по кольцу. Откройте 3D-разбор.', 'The Vortex’s key novelty: fuel burns not in a flame but in a shock wave running round a ring. Open the 3D dive.'),
-  parts: [P('comp', 40, 180, 130, 80, 'Компрессор', 'Compressor', 'Степень сжатия ≈ 25 (меньше, чем у ТРДД: часть сжатия делает сама детонация).', 'Pressure ratio ≈ 25 (less than a turbofan: detonation adds the rest).', 'air'), P('rdc', 210, 170, 170, 100, 'Детонационная камера', 'Detonation combustor', 'Волна ≈ 2 км/с, проход каждые ≈ 0,2 мс.', '≈ 2 km/s wave, a pass every ≈ 0.2 ms.', 'hot'), P('turb', 420, 180, 120, 80, 'Турбина', 'Turbine', '', '', 'hot'), P('gen', 580, 170, 160, 100, 'Сверхпроводящий генератор', 'Superconducting generator', '≈ 12 МВт, КПД ≈ 99,5 %.', '≈ 12 MW, ≈ 99.5 % efficient.', 'elec'), P('h2', 210, 340, 170, 50, 'LH₂ → криостат → форсунки', 'LH₂ → cryostat → injectors', '', '', 'h2')],
+  parts: [P('comp', 40, 180, 130, 80, 'Компрессор', 'Compressor', 'Степень сжатия ≈ 25 (меньше, чем у ТРДД: часть сжатия делает сама детонация).', 'Pressure ratio ≈ 25 (less than a turbofan: detonation adds the rest).', 'air'), P('rdc', 210, 170, 170, 100, 'Детонационная камера', 'Detonation combustor', 'Волна ≈ 2 км/с, проход каждые ≈ 0,2 мс.', '≈ 2 km/s wave, a pass every ≈ 0.2 ms.', 'hot'), P('turb', 420, 180, 120, 80, 'Турбина', 'Turbine', '', '', 'hot'), P('gen', 580, 170, 160, 100, 'Сверхпроводящий генератор', 'Superconducting generator', '≈ 20 МВт на взлёте, ≈ 7 МВт в крейсере; КПД ≈ 99,5 %.', '≈ 20 MW at take-off, ≈ 7 MW in cruise; ≈ 99.5 % efficient.', 'elec'), P('h2', 210, 340, 170, 50, 'LH₂ → криостат → форсунки', 'LH₂ → cryostat → injectors', '', '', 'h2')],
   pipes: [L('air', [[170, 220], [210, 220]], () => 0.8), L('hot', [[380, 220], [420, 220]], () => 1), L('mech', [[540, 220], [580, 220]], () => 0.6), L('h2', [[660, 270], [660, 365], [380, 365]], () => 0.5), L('h2', [[295, 340], [295, 270]], () => 0.5)],
   how: [T('Детонация — это режим, где фронт горения и ударная волна движутся вместе быстрее звука. Сгорание за волной идёт почти без расширения, поэтому давление растёт в 15 раз. В непрерывной кольцевой камере волна не гаснет: перед ней всегда новая порция смеси.', 'Detonation is a regime where the flame front and a shock move together faster than sound. Burning behind the wave hardly expands, so pressure rises 15-fold. In a continuous ring the wave never dies: there is always fresh mixture ahead of it.')],
   donts: [T('Риски: вибрации от пульсаций, нагрев стенок кольца, нестабильность числа волн, выбросы NOx — их решение и есть главная инженерная работа проекта.', 'Risks: pulsation vibration, ring-wall heating, unstable wave count, NOx emissions — solving them is the project’s main engineering work.')],
-  numbers: [[T('Скорость волны', 'Wave speed'), '≈ 1970 m/s'], [T('Скачок давления', 'Pressure jump'), '≈ 15×'], [T('Экономия vs Брайтон (теория)', 'Saving vs Brayton (theory)'), '≈ 15 %']],
+  numbers: [[T('Скорость волны', 'Wave speed'), '≈ 1970 m/s'], [T('Скачок давления', 'Pressure jump'), '≈ 15×'], [T('Экономия топлива vs обычной камеры: модель / теоретический предел', 'Fuel saving vs an ordinary combustor: model / theoretical limit'), '≈ 5.5 % / ≈ 15 %']],
   sim: 'rde',
 }
 const cryo: SystemDef = {
@@ -230,17 +230,17 @@ const cryo: SystemDef = {
   parts: [
     P('g1', 40, 120, 130, 60, 'Генератор 1', 'Generator 1', '', '', 'elec'), P('g2', 40, 260, 130, 60, 'Генератор 2', 'Generator 2', '', '', 'elec'),
     P('bus', 220, 100, 60, 240, 'Шина', 'Bus', 'Кабель из высокотемпературного сверхпроводника в трубке с водородом.', 'High-temperature superconducting cable in a hydrogen-cooled tube.', 'ref'),
-    ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => P(`f${i}`, 340 + (i % 4) * 110, 120 + Math.floor(i / 4) * 140, 90, 60, `Вент. ${i + 1}`, `Fan ${i + 1}`, 'Электромотор ≈ 1,5 МВт, вентилятор в канале, засасывает пограничный слой корпуса.', 'A ≈ 1.5 MW electric motor driving a ducted fan that ingests the body boundary layer.', 'air')),
+    ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => P(`f${i}`, 340 + (i % 4) * 110, 120 + Math.floor(i / 4) * 140, 90, 60, `Вент. ${i + 1}`, `Fan ${i + 1}`, 'Электромотор ≈ 5 МВт на взлёте (≈ 1,7 МВт в крейсере), вентилятор в канале засасывает пограничный слой корпуса.', 'An electric motor of ≈ 5 MW at take-off (≈ 1.7 MW in cruise); the ducted fan ingests the body boundary layer.', 'air')),
   ],
   pipes: [L('elec', [[170, 150], [220, 150]], (s) => (s.core1 ? 1 : 0)), L('elec', [[170, 290], [220, 290]], (s) => (s.core2 ? 1 : 0)), ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => L('elec', [[280, 220], [310, 220], [310, 150 + Math.floor(i / 4) * 140], [340 + (i % 4) * 110, 150 + Math.floor(i / 4) * 140]], (s) => (s.core1 + s.core2) / 2))],
   ctls: [{ id: 'core1', label: T('Ядро 1', 'Core 1'), min: 0, max: 1, step: 1, init: 1, options: [[1, T('работает', 'running')], [0, T('отказ', 'failed')]] }, { id: 'core2', label: T('Ядро 2', 'Core 2'), min: 0, max: 1, step: 1, init: 1, options: [[1, T('работает', 'running')], [0, T('отказ', 'failed')]] }],
   live: (s) => {
     const p = (s.core1 + s.core2) / 2, values: Record<string, string> = {}
     for (let i = 0; i < 8; i++) values[`f${i}`] = `${Math.round(p * 100)} %`
-    return { values, warn: p === 0 ? ['bus'] : [], note: p === 0.5 ? T('Одно ядро отказало: все восемь вентиляторов работают на половине мощности — тяга симметрична, самолёт не разворачивает. У обычного двухдвигательного — сильный разворот, нужна педаль.', 'One core failed: all eight fans run at half power — thrust stays symmetric, no yaw. A conventional twin yaws hard and needs rudder.') : p === 0 ? T('Оба ядра: планирование, качество ≈ 24 — с 10 км ≈ 240 км; аварийная батарея и RAT держат управление.', 'Both cores out: a glide at L/D ≈ 24 — ≈ 240 km from 10 km up; an emergency battery and RAT keep control.') : undefined }
+    return { values, warn: p === 0 ? ['bus'] : [], note: p === 0.5 ? T('Одно ядро отказало: все восемь вентиляторов работают на половине мощности — тяга симметрична, самолёт не разворачивает. У обычного двухдвигательного — сильный разворот, нужна педаль.', 'One core failed: all eight fans run at half power — thrust stays symmetric, no yaw. A conventional twin yaws hard and needs rudder.') : p === 0 ? T('Оба ядра: планирование, качество ≈ 20 — с 10 км ≈ 200 км; аварийная батарея и RAT держат управление.', 'Both cores out: a glide at L/D ≈ 20 — ≈ 200 km from 10 km up; an emergency battery and RAT keep control.') : undefined }
   },
   how: [T('Попробуйте в симуляторе: «Вихрь-240», в полёте «Отказ двиг. 1» — разворота не будет.', 'Try it in the simulator: Vortex-240, in flight press “Fail engine 1” — there will be no yaw.')],
-  donts: [], numbers: [[T('Вентиляторов', 'Fans'), '8 × ≈ 1.5 MW'], [T('КПД передачи', 'Transmission efficiency'), '≈ 99.5 %']], sim: 'vortex',
+  donts: [], numbers: [[T('Вентиляторов', 'Fans'), '8 × ≈ 4.9 MW (take-off) / 1.7 MW (cruise)'], [T('КПД передачи', 'Transmission efficiency'), '≈ 99.5 %']], sim: 'vortex',
 }
 const lh2: SystemDef = {
   id: 'lh2', group: 'vortex', title: T('Водородная топливная система', 'Liquid-hydrogen fuel system'),
@@ -249,7 +249,7 @@ const lh2: SystemDef = {
   pipes: [L('h2', [[240, 210], [290, 210]], () => 0.6), L('h2', [[410, 210], [440, 210], [440, 150], [460, 150]], () => 0.6), L('h2', [[535, 180], [535, 250]], () => 0.6), L('h2', [[610, 280], [640, 280], [640, 220], [660, 220]], () => 0.6)],
   how: [T('Сгорая, водород даёт только воду и немного NOx — CO₂ в полёте ноль. Водяной пар на высоте образует инверсионные следы, поэтому маршрут выбирается так, чтобы их избегать.', 'Burning hydrogen yields only water and some NOx — zero CO₂ in flight. The water vapour makes contrails at altitude, so routes are planned to avoid contrail-forming air.')],
   donts: [T('Водород незаметно утекает и горит почти невидимым пламенем — нужны датчики утечек и вентиляция всех отсеков.', 'Hydrogen leaks easily and burns with an almost invisible flame — leak detectors and ventilation of every bay are essential.')],
-  numbers: [[T('Теплота сгорания', 'Heating value'), '120 MJ/kg'], [T('Плотность жидкого H₂', 'Liquid H₂ density'), '71 kg/m³'], [T('Запас топлива', 'Fuel capacity'), '9 t ≈ 127 m³']],
+  numbers: [[T('Теплота сгорания', 'Heating value'), '120 MJ/kg'], [T('Плотность жидкого H₂', 'Liquid H₂ density'), '71 kg/m³'], [T('Запас топлива', 'Fuel capacity'), '4 t ≈ 56 m³']],
 }
 
 export const PLANE_SYSTEMS: SystemDef[] = [trainer, fbw, engines, gear, nav, auto, press, ice, fire, oxy, structure, comms, rde, cryo, lh2]

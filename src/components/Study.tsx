@@ -27,11 +27,11 @@ interface Topic { id: string; group: string; title: Txt; text: Txt; tags: Txt; g
 const G = {
   diesel: T('Дизель · Toyota Fortuner', 'Diesel · Toyota Fortuner'),
   petrol: T('Бензин · BMW 530i', 'Petrol · BMW 530i'),
-  jet: T('Реактивный двигатель · A320', 'Jet engine · A320'),
+  jet: T('Реактивный двигатель · F320', 'Jet engine · F320'),
   plane: T('Самолёт и его системы', 'The aircraft and its systems'),
   car: T('Шасси автомобиля', 'Car chassis'),
   carsys: T('Все системы автомобиля — схемы, живые модели, чего нельзя делать', 'Every car system — schematics, live models, what not to do'),
-  planesys: T('Все системы самолёта A320', 'Every A320 aircraft system'),
+  planesys: T('Все системы самолёта F320', 'Every F320 aircraft system'),
   vortex: T('«Вихрь-240»: новый принцип полёта', 'Vortex-240: a new way to fly'),
 }
 const ALL_SYS: SystemDef[] = [...CAR_SYSTEMS, ...PLANE_SYSTEMS]
@@ -57,7 +57,7 @@ const TOPICS: Topic[] = [
   { id: 'deck', group: 'plane', title: T('Кабина и приборы', 'Flight deck and displays'), text: T('Живые PFD, ND, ECAM; РУД и сайдстики двигаются. Тяните мышью — осматривайтесь.', 'Live PFD, ND, ECAM; levers and sidesticks move. Drag to look around.'), tags: T('кабина', 'cockpit'), go: { kind: 'flight', start: 'runway', cam: 'cockpit' } },
   { id: 'fbw', group: 'plane', title: T('Fly-by-wire и защиты', 'Fly-by-wire and protections'), text: T('В полёте попробуйте резко взять на себя или крен 70° — защиты не дадут. В прямом законе — дадут.', 'In flight, pull hard or bank 70° — protections stop you. In direct law they do not.'), tags: T('нормальный / прямой закон', 'normal / direct law'), go: { kind: 'flight', start: 'cruise', cam: 'chase' } },
   { id: 'gear', group: 'plane', title: T('Шасси и посадка', 'Landing gear and touchdown'), text: T('Заход на посадку: выпуск шасси, амортизаторы, интерцепторы и реверс при касании.', 'Approach: gear down, shock struts, spoilers and reverse at touchdown.'), tags: T('шасси · реверс', 'gear · reverse'), go: { kind: 'flight', start: 'approach', cam: 'side' } },
-  { id: 'strizh', group: 'plane', title: T('Проект «Стриж-180»', 'The Strizh-180 design'), text: T('Собственный самолёт: подкосное крыло, открытые вентиляторы и расчёт против A320.', 'Our own aircraft: truss-braced wing, open fans and the numbers against the A320.'), tags: T('проект', 'design'), go: { kind: 'flight', start: 'runway', ac: 'strizh', cam: 'chase', design: true } },
+  { id: 'strizh', group: 'plane', title: T('Проект «Стриж-180»', 'The Strizh-180 design'), text: T('Собственный самолёт: подкосное крыло, открытые вентиляторы и расчёт против F320.', 'Our own aircraft: truss-braced wing, open fans and the numbers against the F320.'), tags: T('проект', 'design'), go: { kind: 'flight', start: 'runway', ac: 'strizh', cam: 'chase', design: true } },
   { id: 'drive', group: 'car', title: T('За рулём: шины, ABS, ESC', 'At the wheel: tyres, ABS, ESC'), text: T('Сами разгоняйтесь, тормозите и входите в повороты на сухом, мокром и льду — кольца под колёсами показывают сцепление каждой шины.', 'Accelerate, brake and corner yourself on dry, wet and ice — rings under the wheels show each tyre’s grip.'), tags: T('автосимулятор', 'driving sim'), go: { kind: 'drive' } },
   { id: 'abs', group: 'car', title: T('Тормоза и ABS', 'Brakes and ABS'), text: T('Колодки, диск, суппорт — и как ABS не даёт колесу заблокироваться.', 'Pads, disc, caliper — and how ABS keeps the wheel from locking.'), tags: T('тормоза', 'brakes'), go: { kind: 'lab', vehicle: 'bmw', lab: 'brakes' } },
   { id: 'vxfly', group: 'vortex', title: T('Полёт на «Вихре-240»', 'Fly the Vortex-240'), text: T('Летающее крыло на 240 мест: 8 электровентиляторов, водород, складные консоли. Попробуйте отказ двигателя — разворота не будет.', 'A 240-seat blended wing: 8 electric fans, hydrogen, folding wings. Try an engine failure — there is no yaw.'), tags: T('полёт · проект', 'flight · design'), go: { kind: 'flight', start: 'runway', ac: 'vortex', cam: 'chase', design: true } },

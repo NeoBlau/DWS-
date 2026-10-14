@@ -52,7 +52,12 @@ function SimLoop() {
 function AircraftRoot() {
   const ac = useFlight((s) => s.ac)
   const g = useRef<THREE.Group>(null!)
-  useFrame(() => { const s = FS.sim; g.current.position.set(0, s.pos.y, 0); g.current.quaternion.copy(s.quat) })
+  // the drawings put the design CG (cgLayout) at the origin; the physics CG comes from the mass model and moves with fuel
+  useFrame(() => {
+    const s = FS.sim, cg = s.phys.ms.cg
+    g.current.position.set(AC.cgLayout.x - cg[0], AC.cgLayout.y - cg[1], -cg[2]).applyQuaternion(s.quat).add(_t.set(0, s.pos.y, 0))
+    g.current.quaternion.copy(s.quat)
+  })
   return <group ref={g}>{ac === 'strizh' ? <StrizhModel /> : ac === 'vortex' ? <VortexModel /> : <A320 />}</group>
 }
 
@@ -60,7 +65,8 @@ function AircraftRoot() {
 const _v = new THREE.Vector3(), _t = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler()
 function bodyPoint(layout: [number, number, number], out: THREE.Vector3) {
   const s = FS.sim
-  return out.set(layout[0] - AC.cgLayout.x, layout[1] - AC.cgLayout.y, layout[2]).applyQuaternion(s.quat).add(_t.set(0, s.pos.y, 0))
+  const cg = s.phys.ms.cg
+  return out.set(layout[0] - cg[0], layout[1] - cg[1], layout[2] - cg[2]).applyQuaternion(s.quat).add(_t.set(0, s.pos.y, 0))
 }
 function CameraRig({ orbit }: { orbit: React.MutableRefObject<OrbitImpl | null> }) {
   const { camera } = useThree() as { camera: THREE.PerspectiveCamera }
@@ -452,13 +458,13 @@ export function FlightSim() {
       </Canvas>
       <header className="fs-top">
         <button className="btn sm" onClick={() => useApp.getState().set({ screen: 'landing' })}>← {t(T('Назад', 'Back'))}</button>
-        <div className="fs-title"><span className="eyebrow">{ui.ac === 'strizh' ? t(T('Стриж-180 · собственный проект', 'Strizh-180 · own design')) : ui.ac === 'vortex' ? t(T('Вихрь-240 · новый принцип', 'Vortex-240 · new principle')) : 'Airbus A320'} · {t(T('полёт', 'flight'))}</span><h1>{t(T('Управляйте сами', 'You fly it'))}</h1></div>
+        <div className="fs-title"><span className="eyebrow">{ui.ac === 'strizh' ? t(T('Стриж-180 · собственный проект', 'Strizh-180 · own design')) : ui.ac === 'vortex' ? t(T('Вихрь-240 · новый принцип', 'Vortex-240 · new principle')) : 'Fiber F320'} · {t(T('полёт', 'flight'))}</span><h1>{t(T('Управляйте сами', 'You fly it'))}</h1></div>
         <div className="fs-seg">
           {starts.map(([k, l]) => <button key={k} className={`btn sm ${ui.start === k ? 'on' : ''}`} onClick={() => resetSim(k)}>{t(l)}</button>)}
           <button className={`btn sm ${ui.paused ? 'on' : ''}`} onClick={() => ui.set({ paused: !ui.paused })}>{ui.paused ? '▶' : '❚❚'} {t(T('Пауза', 'Pause'))}</button>
         </div>
         <div className="fs-seg">
-          <button className={`btn sm ${ui.ac === 'a320' ? 'on' : ''}`} onClick={() => { ui.set({ ac: 'a320' }); resetSim(ui.start) }}>A320</button>
+          <button className={`btn sm ${ui.ac === 'a320' ? 'on' : ''}`} onClick={() => { ui.set({ ac: 'a320' }); resetSim(ui.start) }}>F320</button>
           <button className={`btn sm ${ui.ac === 'strizh' ? 'on' : ''}`} onClick={() => { ui.set({ ac: 'strizh' }); resetSim(ui.start) }}>{t(T('Стриж-180', 'Strizh-180'))}</button>
           <button className={`btn sm ${ui.ac === 'vortex' ? 'on' : ''}`} onClick={() => { ui.set({ ac: 'vortex' }); resetSim(ui.start) }}>{t(T('Вихрь-240', 'Vortex-240'))}</button>
           <button className="btn sm" onClick={() => ui.set({ design: true })}>{t(T('Проект ⓘ', 'Design ⓘ'))}</button>

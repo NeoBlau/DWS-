@@ -1,7 +1,7 @@
 import type { Section } from '../utils/geom'
 
 /*
- * A320 geometry (metres). X forward, Y up, Z to the left (port). Ground at y = 0.
+ * F320 geometry (metres). X forward, Y up, Z to the left (port). Ground at y = 0.
  * Overall: length 37.57 m, height 11.76 m, span 35.8 m with sharklets. Fuselage outer Ø ≈ 3.95 m.
  */
 export const AX = {

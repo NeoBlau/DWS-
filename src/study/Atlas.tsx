@@ -55,7 +55,7 @@ export function AtlasView({ sys, onClose, onGo }: { sys: SystemDef; onClose: () 
     </div>
   )
 }
-const GROUP: Record<SystemDef['group'], Txt> = { car: T('Системы автомобиля', 'Car systems'), plane: T('Системы самолёта A320', 'A320 aircraft systems'), vortex: T('«Вихрь-240» — новый принцип', 'Vortex-240 — new principle') }
+const GROUP: Record<SystemDef['group'], Txt> = { car: T('Системы автомобиля', 'Car systems'), plane: T('Системы самолёта F320', 'F320 aircraft systems'), vortex: T('«Вихрь-240» — новый принцип', 'Vortex-240 — new principle') }
 const GO: Record<NonNullable<SystemDef['sim']>, Txt> = { drive: T('Попробовать в автосимуляторе', 'Try it in the driving sim'), flight: T('Попробовать в полёте', 'Try it in flight'), rde: T('Открыть 3D-разбор', 'Open the 3D dive'), vortex: T('Полететь на «Вихре»', 'Fly the Vortex') }
 
 /* ------------------------------------------------------------------ schematic with zoom and pan */
@@ -203,7 +203,7 @@ function DiffWidget() {
   )
 }
 
-/* ------------------------------------------------------------------ live A320 systems trainer */
+/* ------------------------------------------------------------------ live F320 systems trainer */
 function TrainerWidget() {
   const t = useT()
   const ready = useRef(false)

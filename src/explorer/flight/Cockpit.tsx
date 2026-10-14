@@ -7,7 +7,7 @@ import { DEG, DEST, confAt, type Sim } from './fdm'
 import { FS } from './state'
 
 /*
- * A320-style flight deck seen from the captain's seat, built in the drawing frame of aircraftLayout
+ * F320-style flight deck seen from the captain's seat, built in the drawing frame of aircraftLayout
  * (x to the nose, y up, ground at y = 0, +z = right). The windows are real openings in an interior shell,
  * so the outside world is seen through tinted, reflecting glass; the six display units are drawn live.
  */

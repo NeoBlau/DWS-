@@ -59,7 +59,7 @@ export interface Geo {
   centreTank?: [number, number, number] // centre fuel location if not in the wing box
 }
 
-/* ------------------------------------------------------------------ A320 */
+/* ------------------------------------------------------------------ F320 */
 const D = Math.PI / 180
 const A320_ROOT: Section = { ...A320_WING[0], z: 0 }
 export const A320_GEO: Geo = {
@@ -102,7 +102,7 @@ export const A320_GEO: Geo = {
  * Design iteration 2 (found with the physics above): in the first drawing the wing sat 3 m too far aft — the CG was
  * ahead of the wing's leading edge (−50 % MAC) and the aircraft was hopelessly nose-heavy, with a static margin of
  * 140 % MAC. The wing, struts and engines moved 3.2 m forward and the tailplane shrank to 60 % of its area:
- * CG now 22–31 % MAC and a static margin of ≈ 1 m, like an A320.
+ * CG now 22–31 % MAC and a static margin of ≈ 1 m, like an F320.
  */
 export const STRIZH_DX = 3.2
 export const STRIZH_WING: Section[] = [

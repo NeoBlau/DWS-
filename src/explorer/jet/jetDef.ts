@@ -6,7 +6,7 @@ import { coreSpeed } from './Turbofan'
 import type { Vec3 } from '../../data/types'
 
 /*
- * CFM56-5B-class turbofan, as on the A320. Representative configuration; numbers marked ≈ are approximate.
+ * CFM56-5B-class turbofan, as on the F320. Representative configuration; numbers marked ≈ are approximate.
  * Axis along X, intake at +x. The section plane keeps z ≤ 0, so the camera sits on the +z side.
  */
 const r0 = Math.round
@@ -29,7 +29,7 @@ const labels: LabelDef[] = [
   L('hpShaft', [-0.45, 0.1, 0.02], EX.hpc, T('Вал ВД (наружный)', 'HP shaft (outer)'), () => T('КВД ↔ ТВД', 'HPC ↔ HPT'), -40, 60),
   L('exhaust', [-2.1, 0.16, 0.02], EX.exhaust, T('Реактивное сопло', 'Exhaust nozzle'), (lv) => T(`тяга ≈ ${lv.thrust ?? 0} кН`, `thrust ≈ ${lv.thrust ?? 0} kN`), 40, 60),
   L('pylon', [-1.2, 1.35, 0.02], EX.pylon, T('Пилон', 'Pylon'), () => T('крепит двигатель к крылу', 'hangs the engine on the wing'), 40, -40),
-  L('wing', [-1.0, 1.7, 0.8], EX.wing, T('Крыло A320', 'A320 wing'), undefined, 50, -40),
+  L('wing', [-1.0, 1.7, 0.8], EX.wing, T('Крыло F320', 'F320 wing'), undefined, 50, -40),
   L('agb', [0.72, -1.0, -0.33], EX.fanCase, T('Коробка приводов', 'Accessory gearbox'), () => T('генератор, насосы, стартер', 'generator, pumps, starter'), 50, 40),
   L('starter', [0.42, -1.04, -0.36], EX.fanCase, T('Воздушный стартер', 'Air starter'), () => T('воздух от APU', 'air from the APU'), -60, 40),
 ]
@@ -94,7 +94,7 @@ const main: Track = {
     })
   },
   caption: (t, lv) => {
-    if (t < 4) return T('Двигатель CFM56 класса под крылом A320. Снаружи — гондола: внутри два вала, пять модулей и два потока воздуха.', 'A CFM56-class engine under an A320 wing. Outside it is just a nacelle: inside are two spools, five modules and two air streams.')
+    if (t < 4) return T('Двигатель CFM56 класса под крылом F320. Снаружи — гондола: внутри два вала, пять модулей и два потока воздуха.', 'A CFM56-class engine under an F320 wing. Outside it is just a nacelle: inside are two spools, five modules and two air streams.')
     if (t < 8) return T('Разрез показывает весь путь воздуха: вентилятор → компрессоры → камера сгорания → турбины → сопло. Срезанные стенки подсвечены оранжевым.', 'The cut shows the whole air path: fan → compressors → combustor → turbines → nozzle. Cut walls glow orange.')
     if (t < 16) return T(`ВСАСЫВАНИЕ. Вентилятор Ø ≈ 1,7 м (N1 ≈ ${lv.n1 ?? 0}%) затягивает сотни килограммов воздуха в секунду. Большая часть идёт в обход ядра по наружному контуру — этот поток и даёт ≈ 80 % тяги.`, `SUCK. The ≈ 1.7 m fan (N1 ≈ ${lv.n1 ?? 0}%) draws in hundreds of kilograms of air per second. Most of it bypasses the core through the outer duct — that stream makes ≈ 80 % of the thrust.`)
     if (t < 24) return T('СЖАТИЕ. Внутренний поток проходит подпорные ступени и 9 ступеней КВД: лопатки всё короче, давление растёт ≈ в 30 раз, воздух нагревается до ≈ 550 °C только от сжатия.', 'SQUEEZE. The core stream passes the booster and 9 HPC stages: blades get shorter, pressure rises ≈ 30×, and the air heats to ≈ 550 °C from compression alone.')
@@ -173,7 +173,7 @@ const follow: Track = {
 void CORE; void xAtU; void ST
 
 export const JET_DEF: ExplorerDef = {
-  id: 'jet', kicker: T('A320 · CFM56-5B, типовая конфигурация', 'A320 · CFM56-5B class, representative'),
+  id: 'jet', kicker: T('F320 · CFM56-5B, типовая конфигурация', 'F320 · CFM56-5B class, representative'),
   title: T('Турбовентиляторный двигатель', 'Turbofan engine'), subtitle: T('Всасывание → сжатие → сгорание → выхлоп', 'Suck → squeeze → bang → blow'),
   note: T('Геометрия схематична, давления и температуры — представительные значения на взлётном режиме, приблизительно.', 'Schematic geometry; pressures and temperatures are representative take-off values, approximate.'),
   tracks: [main, start, follow], labels,

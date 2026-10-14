@@ -11,7 +11,7 @@ import { Cockpit, PANES, surfacePatch } from './Cockpit'
 import type { Vec3 } from '../../data/types'
 
 /*
- * Procedural A320 in the drawing frame of aircraftLayout (x to the nose, y up, ground at y = 0, +z = right wing).
+ * Procedural F320 in the drawing frame of aircraftLayout (x to the nose, y up, ground at y = 0, +z = right wing).
  * Every moving part reads the flight model each frame — nothing here is keyframed.
  */
 
@@ -321,17 +321,17 @@ function Arrow({ color, get }: { color: string; get: () => { dir: THREE.Vector3;
 }
 export function Forces() {
   const on = useFlight((s) => s.forces && s.cam !== 'cockpit' && s.cam !== 'wing')
-  const W = AC.mass * G
-  const sc = 12 / W // 1 g = 12 m
   const v = useMemo(() => ({ l: new THREE.Vector3(), d: new THREE.Vector3(), t: new THREE.Vector3(1, 0, 0), w: new THREE.Vector3(), q: new THREE.Quaternion() }), [])
-  const cg: Vec3 = [AC.cgLayout.x, AC.cgLayout.y, 0]
+  // weight acts at the computed centre of gravity; 1 g = 12 m of arrow
+  const cg: Vec3 = [0, 0, 0]
+  const sc = () => { const c = FS.sim.phys.ms.cg; cg[0] = c[0]; cg[1] = c[1]; return 12 / (FS.sim.phys.ms.m * G) }
   if (!on) return null
   return (
     <group>
-      <Arrow color="#4fb3ff" get={() => { const d = FS.sim.d; v.l.set(Math.sin(d.alpha), Math.cos(d.alpha), 0); return { dir: v.l, mag: d.lift * sc, at: [cg[0], cg[1] + 1.2, 0] } }} />
-      <Arrow color="#ffae3d" get={() => { v.q.copy(FS.sim.quat).invert(); v.w.set(0, -1, 0).applyQuaternion(v.q); return { dir: v.w, mag: 12, at: [cg[0], cg[1] - 1.2, 0] } }} />
-      <Arrow color="#58e08a" get={() => { const d = FS.sim.d; return { dir: v.t.set(1, 0, 0), mag: (d.thrust[0] + d.thrust[1]) * sc * 3, at: [AX.nose + 0.5, AX.axisY - 0.6, 0] } }} />
-      <Arrow color="#ff5b5b" get={() => { const d = FS.sim.d; v.d.set(-Math.cos(d.alpha), Math.sin(d.alpha), 0); return { dir: v.d, mag: d.drag * sc * 3, at: [AX.tail - 0.5, AX.axisY + 0.3, 0] } }} />
+      <Arrow color="#4fb3ff" get={() => { const d = FS.sim.d; v.l.set(Math.sin(d.alpha), Math.cos(d.alpha), 0); const k = sc(); return { dir: v.l, mag: d.lift * k, at: [cg[0], cg[1] + 1.2, 0] } }} />
+      <Arrow color="#ffae3d" get={() => { v.q.copy(FS.sim.quat).invert(); v.w.set(0, -1, 0).applyQuaternion(v.q); sc(); return { dir: v.w, mag: 12, at: [cg[0], cg[1] - 1.2, 0] } }} />
+      <Arrow color="#58e08a" get={() => { const d = FS.sim.d; return { dir: v.t.set(1, 0, 0), mag: (d.thrust[0] + d.thrust[1]) * sc() * 3, at: [AX.nose + 0.5, AX.axisY - 0.6, 0] } }} />
+      <Arrow color="#ff5b5b" get={() => { const d = FS.sim.d; v.d.set(-Math.cos(d.alpha), Math.sin(d.alpha), 0); return { dir: v.d, mag: d.drag * sc() * 3, at: [AX.tail - 0.5, AX.axisY + 0.3, 0] } }} />
     </group>
   )
 }

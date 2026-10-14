@@ -11,7 +11,7 @@ import { useMats, Hinged, NoseGear, Glow, strobe, beacon, Forces, CockpitIfInsid
 import type { Vec3 } from '../../data/types'
 
 /*
- * «Вихрь-240» — blended wing body. Same drawing frame as the A320 (x to the nose, y up, ground at y = 0,
+ * «Вихрь-240» — blended wing body. Same drawing frame as the F320 (x to the nose, y up, ground at y = 0,
  * centre of gravity at x −0.63, y 3.0), so the shared flight deck sits at the same eye point inside the nose.
  *   · centre body = the cabin (5 seat bays wide), lifting like a wing; outer wings fold at z = 18 m on the ground
  *   · 8 ducted electric fans on the upper aft body ingest its boundary layer
@@ -89,7 +89,7 @@ function Side({ side, m }: { side: 1 | -1; m: Mats }) {
   const tip = useRef<THREE.Group>(null!)
   const fold = useRef(0)
   useFrame((_, dt) => {
-    // the outer panels fold up on the ground at low speed (folded span 36 m — fits an A320 stand)
+    // the outer panels fold up on the ground at low speed (folded span 36 m — fits an F320 stand)
     const s = FS.sim, want = !s.airborne && s.d.gs < 25 && s.ctl.lever < 0.3 && s.srf.confTarget === 0 && s.d.surface !== 'runway' ? 1 : 0
     fold.current += Math.max(-dt * 0.12, Math.min(dt * 0.12, want - fold.current))
     tip.current.rotation.x = -fold.current * 72 * DEG

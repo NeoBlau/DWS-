@@ -2,7 +2,7 @@ import type { ComponentDef, FlowDef, LearnStep, VehicleDef, WalkZone, Vec3 } fro
 import { AX } from '../models/aircraftLayout'
 
 /*
- * Representative Airbus A320ceo with CFM56-5B engines. The A320 family also flies with IAE V2500 (ceo)
+ * Representative Fiber F320 with CFM56-5B engines. The F320 family also flies with IAE V2500 (ceo)
  * and LEAP-1A / PW1100G (neo); tank and system details differ between variants and operators.
  */
 const E = AX.engineZ
@@ -130,7 +130,7 @@ const components: ComponentDef[] = [
   C({ id: 'blueSystem', name: 'Blue hydraulic system', ru: 'Гидросистема Blue', system: 'hydraulics', pos: [-3.3, 2.1, 0.75], flows: ['hydraulic'], path: ['hyd-blue', 'hyd-blue-tail'],
     beginner: 'Третья система с электронасосом. В аварии её крутит маленький ветряк — RAT.', engineer: 'Blue: электронасос; при полной потере питания выпускается RAT и обеспечивает давление и аварийный генератор.', keywords: ['blue', 'rat'], shot: { pos: [2, 6, 10], target: [-3.3, 1.8, 0.75] } }),
   C({ id: 'ptu', name: 'PTU', ru: 'Блок передачи мощности', system: 'hydraulics', pos: [-2.6, 1.95, 0.0], flows: ['hydraulic'], path: ['hyd-ptu'],
-    beginner: 'Если в одной системе пропало давление, PTU «одалживает» его у другой — без смешивания жидкостей.', engineer: 'Гидромотор-насос между Green и Yellow; срабатывает при разнице давлений. Отсюда характерный «лай» A320 на земле.', keywords: ['ptu', 'barking dog'], shot: at(-2.6, 1.7, 0, 5) }),
+    beginner: 'Если в одной системе пропало давление, PTU «одалживает» его у другой — без смешивания жидкостей.', engineer: 'Гидромотор-насос между Green и Yellow; срабатывает при разнице давлений. Отсюда характерный «лай» F320 на земле.', keywords: ['ptu', 'barking dog'], shot: at(-2.6, 1.7, 0, 5) }),
   // ELECTRICAL
   C({ id: 'avionics', name: 'Avionics bay', ru: 'Отсек авионики', system: 'electrical', pos: [13.4, 2.6, -0.3], flows: ['electric'], path: ['elec-idg-L', 'elec-idg-R', 'elec-apu', 'elec-cabin', 'elec-cockpit', 'elec-galley'],
     beginner: 'Под кабиной — «электрощитовая» самолёта: шины, аккумуляторы и компьютеры.', engineer: 'Шины переменного тока 115 В / 400 Гц и постоянного 28 В (через выпрямители TR); два аккумулятора; контакторы перестраивают сеть при отказах.', keywords: ['electrical', 'электрика', 'battery', 'аккумулятор', 'bus', 'шины'], shot: { pos: [10.4, 2.6, 2.8], target: [13.4, 2.1, 0] } }),
@@ -163,10 +163,10 @@ const walk: WalkZone[] = [
 const step = (title: string, text: string, focus: string, extra: Partial<LearnStep> = {}): LearnStep => ({ title, text, focus, ...extra })
 
 export const a320: VehicleDef = {
-  id: 'a320', kind: 'aircraft', name: 'AIRBUS A320', line: 'COMMERCIAL AIRCRAFT', type: '2 × high-bypass turbofan',
+  id: 'a320', kind: 'aircraft', name: 'FIBER F320', line: 'COMMERCIAL AIRCRAFT', type: '2 × high-bypass turbofan',
   tagline: 'Узкофюзеляжный лайнер на 150–180 пассажиров с управлением по проводам.',
-  representative: 'Representative A320ceo with CFM56-5B engines',
-  varies: 'A320 family variants and engine options (CFM56, V2500, LEAP-1A, PW1100G) differ in detail.',
+  representative: 'Representative F320 with CFM56-5B engines',
+  varies: 'F320 family variants and engine options (CFM56, V2500, LEAP-1A, PW1100G) differ in detail.',
   accent: '#8fd6ff',
   specs: [
     { label: 'Length', value: '37.57 m' },
@@ -250,7 +250,7 @@ export const a320: VehicleDef = {
   demo: {
     id: 'demo-jet', vehicle: 'a320', title: 'How fuel becomes thrust', subtitle: 'От бака в крыле до реактивной струи',
     steps: [
-      step('Топливо в крыле', 'Крыло A320 — это бак. Насосы готовят топливо к подаче.', 'wingTanks', { flows: ['fuel'], duration: 5 }),
+      step('Топливо в крыле', 'Крыло F320 — это бак. Насосы готовят топливо к подаче.', 'wingTanks', { flows: ['fuel'], duration: 5 }),
       step('ВСУ', 'ВСУ в хвосте даёт сжатый воздух для запуска.', 'apu', { action: 'apuStart', paths: ['air-apu', 'apu-exh'], duration: 5 }),
       step('Запуск', 'Воздушный стартер раскручивает двигатель, затем подаётся топливо и поджигается смесь.', 'engine', { action: 'enginesStart', paths: ['fuel-ctr-L', 'fuel-eng-L', 'fuel-ctr-R', 'fuel-eng-R'], duration: 6 }),
       step('Воздух', 'Вентилятор всасывает воздух. Большая часть идёт в обход ядра.', 'fan', { paths: ['air-inlet-L', 'air-inlet-R'], duration: 6 }),

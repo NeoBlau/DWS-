@@ -14,7 +14,7 @@ import type { Vec3 } from '../../data/types'
 /*
  * «Стриж-180»: high truss-braced wing (span 47.3 m, aspect ratio ≈ 19, folding tips), struts from fuselage
  * sponsons that also house the main gear, two wing-mounted open-fan engines (Ø ≈ 4 m), T-tail.
- * Same drawing frame as the A320 (x to the nose, y up, ground at y = 0); the forward fuselage and flight deck are shared.
+ * Same drawing frame as the F320 (x to the nose, y up, ground at y = 0); the forward fuselage and flight deck are shared.
  */
 
 /* ------------------------------------------------------------------ wing planform (right side, +z) */

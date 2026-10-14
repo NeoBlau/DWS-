@@ -6,7 +6,9 @@ import { AC, CONFS, DEG, G, KT, confAt, DEST, type Sim, type SimEvent } from './
  * what is happening to the aircraft right now and how the system the pilot just used works.
  */
 
-const W = AC.mass * G
+/** weight and wing area of the aircraft being flown, from its mass and aerodynamic models */
+const wt = (s: Sim) => s.phys.ms.m * G
+const sref = (s: Sim) => s.phys.m.aero.Sref
 const kN = (n: number) => Math.round(n / 1000)
 const pct = (n: number) => Math.round(n * 100)
 const r0 = Math.round
@@ -17,6 +19,7 @@ export interface Narration { phase: Txt; now: Txt; why: Txt | null; whyTitle: Tx
 export function phaseNarration(s: Sim): { phase: Txt; now: Txt } {
   const d = s.d, c = s.ctl
   const thrust = d.thrust[0] + d.thrust[1]
+  const W = wt(s)
   const liftPct = pct(d.lift / W)
   const distToRwy = (DEST - s.pos.x) / 1852
   if (s.crashed) {
@@ -63,8 +66,8 @@ export function phaseNarration(s: Sim): { phase: Txt; now: Txt } {
   if (!s.airborne && !s.everAirborne) {
     if (d.gs < 2 && c.lever < 0.1) return {
       phase: T('На исполнительном старте', 'Lined up on the runway'),
-      now: T(`Самолёт стоит на полосе: масса ≈ ${r0(AC.mass / 1000)} т, вес ≈ ${kN(W)} кН. Крыло создаёт подъёмную силу только в потоке воздуха — она растёт как квадрат скорости. Для взлёта нужны закрылки (рычаг FLAPS в 1 — на земле это 1+F) и полная тяга TOGA.`,
-        `The aircraft is lined up: mass ≈ ${r0(AC.mass / 1000)} t, weight ≈ ${kN(W)} kN. A wing only lifts in moving air, and lift grows with the square of speed. Take-off needs flaps (FLAPS lever to 1 — on the ground that is 1+F) and full TOGA thrust.`),
+      now: T(`Самолёт стоит на полосе: масса ≈ ${r0(s.phys.ms.m / 1000)} т, вес ≈ ${kN(W)} кН. Крыло создаёт подъёмную силу только в потоке воздуха — она растёт как квадрат скорости. Для взлёта нужны закрылки (рычаг FLAPS в 1 — на земле это 1+F) и полная тяга TOGA.`,
+        `The aircraft is lined up: mass ≈ ${r0(s.phys.ms.m / 1000)} t, weight ≈ ${kN(W)} kN. A wing only lifts in moving air, and lift grows with the square of speed. Take-off needs flaps (FLAPS lever to 1 — on the ground that is 1+F) and full TOGA thrust.`),
     }
     if (d.ias < 135) return {
       phase: T('Разбег', 'Take-off roll'),
@@ -103,8 +106,8 @@ export function phaseNarration(s: Sim): { phase: Txt; now: Txt } {
   }
   if (d.ra < 1500 && s.srf.gear > 0.5 && d.vs > 200 && s.pos.x < DEST - 20000) return {
     phase: T('Начальный набор', 'Initial climb'),
-    now: T(`Подъёмная сила ${liftPct}% веса, вертикальная +${r0(d.vs)} фт/мин. Выпущенное шасси даёт ≈ ${pct((0.018 * d.qbar * AC.S) / Math.max(1, d.drag))}% всего сопротивления — после «положительной вертикальной» уберите его (G).`,
-      `Lift ${liftPct}% of weight, climbing +${r0(d.vs)} ft/min. The extended gear makes ≈ ${pct((0.018 * d.qbar * AC.S) / Math.max(1, d.drag))}% of total drag — once you have positive climb, raise it (G).`),
+    now: T(`Подъёмная сила ${liftPct}% веса, вертикальная +${r0(d.vs)} фт/мин. Выпущенное шасси даёт ≈ ${pct((s.phys.m.geo.gearDrag * d.qbar) / Math.max(1, d.drag))}% всего сопротивления — после «положительной вертикальной» уберите его (G).`,
+      `Lift ${liftPct}% of weight, climbing +${r0(d.vs)} ft/min. The extended gear makes ≈ ${pct((s.phys.m.geo.gearDrag * d.qbar) / Math.max(1, d.drag))}% of total drag — once you have positive climb, raise it (G).`),
   }
   if (Math.abs(d.phi) > 8 * DEG) {
     const n = 1 / Math.cos(d.phi)
@@ -155,15 +158,16 @@ export function explain(topic: Topic, s: Sim): { title: Txt; body: Txt } {
   switch (topic) {
     case 'flaps': {
       const c = confAt(s.srf.confTarget), cur = CONFS[Math.round(s.srf.confTarget)]
-      const clmax = c.cl0 + 5.6 * c.as
-      const vs = Math.sqrt((2 * W) / (1.225 * AC.S * clmax)) / KT
+      // maximum lift of this configuration from the vortex-lattice stall sweep of the real wing
+      const clmax = s.phys.m.stall[Math.round(s.srf.confTarget)]?.clmax ?? c.cl0 + 5.6 * c.as
+      const vs = Math.sqrt((2 * wt(s)) / (1.225 * sref(s) * clmax)) / KT
       return { title: T(`Закрылки: CONF ${cur.id}`, `Flaps: CONF ${cur.id}`), body: T(
         `Предкрылки (${r0(c.slat)}°) выдвигаются вперёд-вниз, закрылки Фаулера (${r0(c.flap)}°) — назад и вниз: площадь и кривизна крыла растут, максимальный коэффициент подъёмной силы ≈ ${clmax.toFixed(2)}, скорость сваливания ≈ ${r0(vs)} узлов. Цена — сопротивление. Привод — гидравлика (зелёная/жёлтая система, 3000 psi), ход ≈ 20–30 с. Ограничение VFE ${r0(c.vfe)} узлов.`,
         `Slats (${r0(c.slat)}°) move forward and down, Fowler flaps (${r0(c.flap)}°) slide aft and down: wing area and camber grow, max lift coefficient ≈ ${clmax.toFixed(2)}, stall speed ≈ ${r0(vs)} kt. The price is drag. Driven hydraulically (green/yellow systems, 3000 psi), ≈ 20–30 s full travel. VFE limit ${r0(c.vfe)} kt.`) }
     }
     case 'gear': return { title: T('Шасси', 'Landing gear'), body: T(
-      `Основные стойки убираются внутрь, к фюзеляжу, носовая — вперёд, за ≈ 9 с, от зелёной гидросистемы. На земле уборку блокирует датчик обжатия амортизаторов. Выпущенное шасси — одно из главных источников сопротивления (ΔCD ≈ 0,018).`,
-      `The main legs retract inward into the fuselage, the nose leg forward, in ≈ 9 s, powered by the green hydraulic system. On the ground a weight-on-wheels switch blocks retraction. Extended gear is one of the largest drag sources (ΔCD ≈ 0.018).`) }
+      `Основные стойки убираются внутрь, к фюзеляжу, носовая — вперёд, за ≈ 9 с, от зелёной гидросистемы. На земле уборку блокирует датчик обжатия амортизаторов. Выпущенное шасси — одно из главных источников сопротивления (ΔCD ≈ ${(s.phys.m.geo.gearDrag / sref(s)).toFixed(3).replace('.', ',')}).`,
+      `The main legs retract inward into the fuselage, the nose leg forward, in ≈ 9 s, powered by the green hydraulic system. On the ground a weight-on-wheels switch blocks retraction. Extended gear is one of the largest drag sources (ΔCD ≈ ${(s.phys.m.geo.gearDrag / sref(s)).toFixed(3)}).`) }
     case 'thrust': return { title: T('Двигатели и РУД', 'Engines and thrust levers'), body: T(
       `РУД задаёт обороты вентилятора N1 (сейчас ${r0(s.n1[0])}%). Ротор массивный, поэтому тяга нарастает с задержкой: от малого газа до взлётного — ≈ 6–8 с. Около 80% тяги даёт вентилятор (обходной поток), остальное — горячее ядро. Положения: IDLE, CL (набор), FLX/MCT, TOGA (взлёт/уход). Максимум ≈ 2 × 120 кН у земли; с высотой и скоростью тяга падает.`,
       `The levers command fan speed N1 (now ${r0(s.n1[0])}%). The rotor is heavy, so thrust lags: idle to take-off takes ≈ 6–8 s. About 80% of thrust comes from the fan (bypass stream), the rest from the hot core. Detents: IDLE, CL (climb), FLX/MCT, TOGA (take-off/go-around). Maximum ≈ 2 × 120 kN at sea level; it falls with altitude and speed.`) }
@@ -227,7 +231,7 @@ export function explain(topic: Topic, s: Sim): { title: Txt; body: Txt } {
     case 'gearDamage': return { title: T('Шасси повреждено', 'Gear damaged'), body: T(`Шасси двигали или держали выпущенным выше допустимой скорости (VLO ${r0(s.spec.vlo)} / VLE ${r0(s.spec.vle)} узлов): створки сорваны, шасси больше не убирается. Лететь можно, но сопротивление выше — расход топлива растёт.`, `The gear was moved or kept down above its limit speed (VLO ${r0(s.spec.vlo)} / VLE ${r0(s.spec.vle)} kt): the doors are torn and the gear will not retract. You can fly on, but drag — and fuel burn — is higher.`) }
     case 'gearCollapse': return { title: T('Стойка шасси сложилась', 'Gear leg collapsed'), body: T('Нагрузка на стойку превысила прочность: слишком жёсткое касание, посадка с большим сносом или выкатывание на грунт на скорости. Самолёт опустится на двигатель или фюзеляж.', 'The load on a leg exceeded its strength: too hard a touchdown, landing in a big crab, or running onto grass at speed. The aircraft settles on an engine or its fuselage.') }
     case 'overstress': return { title: T('Перегрузка конструкции', 'Structural overstress'), body: T(`Перегрузка ${s.d.nz.toFixed(1)} g выше эксплуатационной (+2,5 g без закрылков, +2 g с закрылками). Металл получает остаточную деформацию; при 1,5 × от предела крыло разрушится.`, `Load factor ${s.d.nz.toFixed(1)} g is above the limit (+2.5 g clean, +2 g with flaps). The structure is permanently deformed; at 1.5 × the limit the wing fails.`) }
-    case 'engineFail': return { title: T('Отказ двигателя', 'Engine failure'), body: T('Тяга только с одной стороны разворачивает самолёт к отказавшему двигателю. Удерживайте педалью в сторону работающего, тяга работающего — до CL/MCT. A320 может лететь, набирать высоту и садиться на одном двигателе.', 'Thrust on one side only yaws the aircraft toward the dead engine. Hold rudder toward the good engine and set it to CL/MCT. An A320 can fly, climb and land on one engine.') }
+    case 'engineFail': return { title: T('Отказ двигателя', 'Engine failure'), body: T('Тяга только с одной стороны разворачивает самолёт к отказавшему двигателю. Удерживайте педалью в сторону работающего, тяга работающего — до CL/MCT. F320 может лететь, набирать высоту и садиться на одном двигателе.', 'Thrust on one side only yaws the aircraft toward the dead engine. Hold rudder toward the good engine and set it to CL/MCT. An F320 can fly, climb and land on one engine.') }
     case 'flameout': return { title: T('Двигатели заглохли', 'Flame-out'), body: T('Топливо кончилось — горение прекратилось, вентилятор лишь вращается набегающим потоком. Самолёт превратился в планёр: качество ≈ 17, то есть с 1 км высоты пролетит ≈ 17 км. Держите скорость наилучшего планирования и ищите полосу.', 'Out of fuel — combustion stopped; the fans only windmill in the airflow. The aircraft is now a glider with L/D ≈ 17: from 1 km up it covers ≈ 17 km. Hold best-glide speed and look for a runway.') }
     case 'bellyLanding': return { title: T('На брюхе', 'Belly landing'), body: T('Фюзеляж касается земли: шасси не выпущено или сложилось. Трение металла о бетон тормозит самолёт, но конструкция повреждена.', 'The fuselage is on the ground: the gear was up or collapsed. Metal grinding on concrete slows the aircraft, but the structure is damaged.') }
     case 'toConfig': return { title: T('T.O CONFIG', 'T.O CONFIG'), body: T('При установке взлётного режима система проверила конфигурацию и нашла ошибку: закрылки не во взлётном положении, выпущены интерцепторы или затянут стояночный тормоз. Без закрылков на полосе 3 км самолёт может не успеть оторваться.', 'When take-off thrust was set the system checked the configuration and found an error: flaps not in a take-off setting, speedbrake out or parking brake set. Without flaps a 3 km runway may not be long enough to lift off.') }
