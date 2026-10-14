@@ -5,7 +5,8 @@ import { EffectComposer, Bloom, SMAA, Vignette } from '@react-three/postprocessi
 import * as THREE from 'three'
 import type { OrbitControls as OrbitImpl } from 'three-stdlib'
 import { create } from 'zustand'
-import { useApp } from '../../store'
+import { useApp, getApp } from '../../store'
+import { updateCarAudio, stopCarAudio } from './carAudio'
 import { VEHICLES } from '../../vehicles'
 import { CarModel } from '../../models/CarModel'
 import type { CarLayout } from '../../models/carLayout'
@@ -66,6 +67,7 @@ function Loop() {
     while (acc.current >= H && n < 60) { stepCar(D.car, H); acc.current -= H; n++ }
     const avgW = D.car.wheels.reduce((s, w) => s + w.omega, 0) / 4
     D.wheelAngle += avgW * dt
+    updateCarAudio(D.car, useDrive.getState().cam, dt)
   })
   return null
 }
@@ -373,6 +375,7 @@ function Panel() {
   const hv = useCarSnap()
   const set = (f: () => void) => { f(); force((n) => n + 1) }
   const [pad, setPad] = useState('')
+  const sound = useApp((st) => st.sound)
   useEffect(() => { const id = setInterval(() => setPad(PAD.connected ? PAD.id : ''), 1000); return () => clearInterval(id) }, [])
   return (
     <aside className="ds-panel glass">
@@ -404,6 +407,7 @@ function Panel() {
       <div className="fs-seg wrap">
         <button className="btn sm" onClick={() => reset(ui.car)}>{t(T('На старт', 'Reset'))}</button>
         <button className={`btn sm ${ui.paused ? 'on' : ''}`} onClick={() => ui.set({ paused: !ui.paused })}>{t(T('Пауза', 'Pause'))}</button>
+        <button className={`btn sm ${sound ? 'on' : ''}`} onClick={() => { getApp().set({ sound: !sound }); if (sound) stopCarAudio() }}>{t(T('Звук', 'Sound'))}</button>
       </div>
       <p className="fs-pad">{pad ? t(T('🎮 Геймпад: RT газ · LT тормоз · левый стик руль · A ручник · RB/LB передачи · X зажигание · Back селектор · Y камера', '🎮 Gamepad: RT throttle · LT brake · left stick steer · A handbrake · RB/LB shift · X ignition · Back selector · Y camera')) : t(T('🎮 Подключите геймпад и нажмите любую кнопку', '🎮 Connect a gamepad and press any button'))}</p>
     </aside>
@@ -416,7 +420,7 @@ export function DriveSim() {
   const ui = useDrive()
   const v = useCarSnap()
   const orbit = useRef<OrbitImpl | null>(null)
-  useEffect(() => { reset(useDrive.getState().car) }, [])
+  useEffect(() => { reset(useDrive.getState().car); return () => stopCarAudio() }, [])
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       D.keys.add(e.code)
@@ -439,7 +443,7 @@ export function DriveSim() {
     const up = (e: KeyboardEvent) => D.keys.delete(e.code)
     const blur = () => D.keys.clear()
     window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur)
-    if (import.meta.env.DEV) Object.assign(window, { __drive: { D, reset, ui: useDrive, step: (s: number) => { let n = Math.round(s / H); while (n-- > 0) stepCar(D.car, H) } } })
+    if (import.meta.env.DEV) Object.assign(window, { __drive: { D, reset, ui: useDrive, step: (s: number) => { let n = Math.round(s / H); while (n-- > 0) stepCar(D.car, H) }, updateCarAudio } })
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur) }
   }, [])
   const n = narrate(v)

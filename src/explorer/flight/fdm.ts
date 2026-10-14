@@ -129,7 +129,7 @@ export const STRIZH: Spec = {
  *    (≈ 99.5 % efficient), so power can be split freely between 8 electric fans;
  *  · the fans sit on the upper aft body and swallow its slow boundary layer (boundary-layer ingestion): they
  *    re-energise the wake instead of accelerating fresh air — ≈ 8 % less propulsive power;
- *  · the whole body lifts; outer wing panels fold at the gate (52 m in the air, 36 m on the ground);
+ *  · the whole body lifts; outer wing panels fold at the gate (56 m in the air, 36 m on the ground);
  *  · any core can feed every fan: losing one core gives no asymmetric thrust at all.
  * Numbers are a conceptual design computed with the same model as the F320, not certified data.
  */

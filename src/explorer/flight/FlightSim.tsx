@@ -4,7 +4,7 @@ import { OrbitControls } from '@react-three/drei'
 import { EffectComposer, Bloom, SMAA, Vignette } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitImpl } from 'three-stdlib'
-import { useApp } from '../../store'
+import { useApp, getApp } from '../../store'
 import { useT, useLang, T, type Txt } from '../i18n'
 import { A320 } from './Aircraft'
 import { StrizhModel } from './Strizh'
@@ -25,7 +25,7 @@ import { PAD } from '../gamepad'
 /* ------------------------------------------------------------------ simulation loop: fixed 240 Hz steps */
 function SimLoop() {
   const acc = useRef(0)
-  useFrame((_, dtRaw) => {
+  useFrame((state, dtRaw) => {
     const dt = Math.min(dtRaw, 0.1)
     const ui = useFlight.getState()
     const s = FS.sim
@@ -43,7 +43,7 @@ function SimLoop() {
       const onGround = (s.d.struts?.[i] ?? 1) < 0.3
       return r + (onGround ? roll / radius : 0) * dt
     })
-    updateAudio(s, !ui.sound)
+    updateAudio(s, ui.cam, state.camera, dt)
   })
   return null
 }
@@ -201,6 +201,7 @@ function ControlPanel({ v }: { v: Snap }) {
   const t = useT()
   const hl = useHighlight()
   const ui = useFlight()
+  const sound = useApp((st) => st.sound)
   const c = FS.sim.ctl
   const [, force] = useState(0)
   const set = (f: () => void) => { f(); force((n) => n + 1) }
@@ -267,7 +268,7 @@ function ControlPanel({ v }: { v: Snap }) {
         <button className={`btn sm ${ui.forces ? 'on' : ''}`} onClick={() => ui.set({ forces: !ui.forces })}>{t(T('Силы', 'Forces'))}</button>
         <button className={`btn sm ${ui.path ? 'on' : ''}`} onClick={() => ui.set({ path: !ui.path })}>{t(T('Глиссада', 'Glide path'))}</button>
         <button className={`btn sm ${ui.guide ? 'on' : ''}`} onClick={() => ui.set({ guide: !ui.guide })}>{t(T('Инструктор', 'Instructor'))}</button>
-        <button className={`btn sm ${ui.sound ? 'on' : ''}`} onClick={() => { if (!ui.sound) startAudio(); else stopAudio(); ui.set({ sound: !ui.sound }) }}>{t(T('Звук', 'Sound'))}</button>
+        <button className={`btn sm ${sound ? 'on' : ''}`} onClick={() => { getApp().set({ sound: !sound }); if (!sound) startAudio(); else stopAudio() }}>{t(T('Звук', 'Sound'))}</button>
       </div>
     </aside>
   )
@@ -434,11 +435,11 @@ export function FlightSim() {
   }, [])
   useEffect(() => {
     if (!import.meta.env.DEV) return
-    Object.assign(window, { __flight: { FS, resetSim, advance: (sec: number) => advance(FS.sim, sec), ui: useFlight } })
+    Object.assign(window, { __flight: { FS, resetSim, advance: (sec: number) => advance(FS.sim, sec), ui: useFlight, updateAudio } })
   }, [])
   const starts: [Parameters<typeof resetSim>[0], Txt][] = [['gate', T('Полный рейс', 'Full flight')], ['runway', T('С полосы', 'From runway')], ['approach', T('Заход', 'Approach')], ['cruise', T('В полёте', 'In flight')]]
   return (
-    <div className="fs" onPointerDown={() => { if (ui.sound) startAudio() }}>
+    <div className="fs" onPointerDown={() => { if (getApp().sound) startAudio() }}>
       <Canvas className="fs-canvas" shadows dpr={quality === 'high' ? [1, 1.6] : [1, 1.2]}
         gl={{ logarithmicDepthBuffer: true, antialias: quality !== 'high', powerPreference: 'high-performance' }}
         camera={{ fov: 55, near: 0.25, far: 260000, position: [-45, 15, 0] }}

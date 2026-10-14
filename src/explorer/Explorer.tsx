@@ -240,6 +240,7 @@ export function Explorer({ def, cutOpen, controlsPanel, children, cam, floorY }:
   const setLang = useLang((s) => s.setLang)
   const st = useExp()
   const quality = useApp((s) => s.quality)
+  const sound = useApp((s) => s.sound)
   const controls = useRef<OrbitImpl | null>(null)
   const track = def.tracks.find((k) => k.id === st.track) ?? def.tracks[0]
   useEffect(() => {
@@ -291,6 +292,7 @@ export function Explorer({ def, cutOpen, controlsPanel, children, cam, floorY }:
         <div className="xp-right">
           <div className="seg xp-lang"><button className={lang === 'ru' ? 'on' : ''} onClick={() => setLang('ru')}>RU</button><button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button></div>
           <button className={`btn sm ${quality === 'high' ? 'on' : ''}`} title={t(T('Высокая чёткость: больше пикселей, тени и затенение', 'High definition: more pixels, shadows and occlusion'))} onClick={() => useApp.getState().set({ quality: quality === 'high' ? 'low' : 'high' })}>HD</button>
+          <button className={`btn sm ${sound ? 'on' : ''}`} onClick={() => useApp.getState().set({ sound: !sound })}>{t(T('Звук', 'Sound'))}</button>
           <button className="btn sm" onClick={() => st.set({ follow: true, mode: 'auto' })}>{t(UI.reset)}</button>
         </div>
       </div>

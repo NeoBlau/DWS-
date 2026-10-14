@@ -21,7 +21,7 @@ function snap() {
   }
 }
 /** ECAM-style warnings and memos derived from the aircraft state (red first, then amber, then green memos) */
-function warnings() {
+export function warnings() {
   const s = FS.sim, d = s.d, dm = s.dmg, y = s.sys, out: { txt: string; lvl: 'red' | 'amber' | 'green' }[] = []
   const hydArch = s.spec.arch === 'hyd', engRun = s.eng.some((e) => e.state === 'run')
   s.eng.forEach((e, i) => { if (e.state === 'failed') out.push({ txt: `ENG ${i + 1} ${e.why === 'fuel' ? 'FLAME OUT' : e.why === 'strike' ? 'DAMAGED' : 'FAIL'}`, lvl: 'red' }) })

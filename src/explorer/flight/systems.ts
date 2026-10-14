@@ -70,7 +70,7 @@ export function createSys(cold: boolean, fuel: number, wingCap: number): Sys {
     apu: { n: 0, egt: 20, state: 'off', t: 0, usedBleed: false },
     ac: [!cold, !cold], acEss: !cold, dcBat: !cold, dcEss: !cold, dc: !cold, emer: false, acSrc: ['', ''],
     rat: false, bleed: 0, bleedSrc: '', hyd: { G: cold ? 0 : 3000, B: cold ? 0 : 3000, Y: cold ? 0 : 3000 }, accu: 3000,
-    tank: { L: w, C: c, R: w }, feed: ['', ''], ir: { state: cold ? 'off' : 'nav', t: cold ? 0 : IR_ALIGN_S }, cab: 0, law: 'normal',
+    tank: { L: w, C: c, R: w }, feed: cold ? ['', ''] : w > 0 ? ['L', 'R'] : ['C', 'C'], ir: { state: cold ? 'off' : 'nav', t: cold ? 0 : IR_ALIGN_S }, cab: 0, law: 'normal',
     fault: { G: false, B: false, Y: false, gen: [false, false] }, startFault: ['', ''],
   }
 }

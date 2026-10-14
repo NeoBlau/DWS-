@@ -1,89 +1,58 @@
 import { useEffect } from 'react'
 import { useApp, getApp } from '../store'
 import { liveRuntime } from '../models/runtime'
+import { live, exp } from '../explorer/core'
+import { audio, shot, silence } from './bus'
+import { Piston, Turbofan, Group, Tone } from './voices'
 
-/**
- * Procedural ambience (no audio files): engine harmonics follow live rpm, a turbo whine follows boost,
- * the jet is filtered noise + fan tone that follows N1, and short clicks mark mechanical actions.
- * Off by default; the AudioContext is only created after the user turns sound on (a click).
+/*
+ * Sound outside the two simulators (they drive their own): the vehicle anatomy screens and the engine explorers
+ * follow the running model — crank rpm, throttle and boost of the piston engines, N1 / N2 and thrust of the
+ * turbofan, the APU — and every button in the interface gives a soft click. Off until the user turns sound on.
  */
-class Synth {
-  ctx: AudioContext
-  master: GainNode
-  eng: OscillatorNode[] = []
-  engGain: GainNode
-  engFilter: BiquadFilterNode
-  turbo: OscillatorNode
-  turboGain: GainNode
-  noise: AudioBufferSourceNode
-  jetFilter: BiquadFilterNode
-  jetGain: GainNode
-  fan: OscillatorNode
-  fanGain: GainNode
-  constructor() {
-    this.ctx = new AudioContext()
-    const c = this.ctx
-    this.master = c.createGain(); this.master.gain.value = 0.0; this.master.connect(c.destination)
-    this.engFilter = c.createBiquadFilter(); this.engFilter.type = 'lowpass'; this.engFilter.frequency.value = 420; this.engFilter.Q.value = 3
-    this.engGain = c.createGain(); this.engGain.gain.value = 0
-    this.engFilter.connect(this.engGain).connect(this.master)
-    ;[1, 2, 0.5].forEach((m, i) => { const o = c.createOscillator(); o.type = i === 0 ? 'sawtooth' : 'triangle'; o.frequency.value = 30 * m; o.connect(this.engFilter); o.start(); this.eng.push(o) })
-    this.turbo = c.createOscillator(); this.turbo.type = 'sine'; this.turboGain = c.createGain(); this.turboGain.gain.value = 0
-    this.turbo.connect(this.turboGain).connect(this.master); this.turbo.start()
-    const buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate); const d = buf.getChannelData(0)
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
-    this.noise = c.createBufferSource(); this.noise.buffer = buf; this.noise.loop = true
-    this.jetFilter = c.createBiquadFilter(); this.jetFilter.type = 'bandpass'; this.jetFilter.Q.value = 0.6
-    this.jetGain = c.createGain(); this.jetGain.gain.value = 0
-    this.noise.connect(this.jetFilter).connect(this.jetGain).connect(this.master); this.noise.start()
-    this.fan = c.createOscillator(); this.fan.type = 'sine'; this.fanGain = c.createGain(); this.fanGain.gain.value = 0
-    this.fan.connect(this.fanGain).connect(this.master); this.fan.start()
+type Mode = 'diesel' | 'petrol' | 'jet' | null
+let piston: Piston | null = null, fan: Turbofan | null = null, apuG: Group | null = null, apuT: Tone | null = null, mode: Mode = null
+
+function stopAll() { piston?.dispose(); fan?.dispose(); apuG?.dispose(); piston = null; fan = null; apuG = null; apuT = null; mode = null }
+
+function tick() {
+  const st = getApp()
+  const want: Mode = st.screen === 'machine' && st.vehicleId ? (st.vehicleId === 'a320' ? 'jet' : st.vehicleId === 'fortuner' ? 'diesel' : 'petrol')
+    : st.screen === 'explorer' && (st.explorer === 'diesel' || st.explorer === 'petrol' || st.explorer === 'jet') ? st.explorer : null
+  if (!st.sound || !want) { if (mode) stopAll(); if (!st.sound) silence(); return }
+  const c = audio()
+  if (!c) return
+  if (want !== mode) { stopAll(); mode = want; if (want === 'jet') { fan = new Turbofan(c); apuG = new Group(c); apuT = new Tone(apuG, 'sine', 1200); apuG.level(1) } else piston = new Piston(c) }
+  const rt = liveRuntime.current, inExplorer = st.screen === 'explorer'
+  if (piston) {
+    const rpm = inExplorer ? live.rpm ?? 0 : rt.rpm
+    const load = inExplorer ? exp().throttle : Math.min(1, Math.max(0.1, (rt.rpm - 800) / 4000))
+    const boost = inExplorer ? Math.min(1.2, (live.turboRpm ?? 0) / 140000) : Math.min(1, Math.max(0, (rt.rpm - 1400) / 2600))
+    piston.update({ rpm, load, on: rpm > 300, crank: rpm > 50 && rpm < 300, boost, diesel: mode === 'diesel', cyl: 4, inside: false })
   }
-  update(on: boolean, kind: 'car' | 'aircraft' | null) {
-    const t = this.ctx.currentTime, rt = liveRuntime.current
-    const s = (p: AudioParam, v: number, k = 0.15) => p.setTargetAtTime(v, t, k)
-    s(this.master.gain, on ? 0.5 : 0, 0.3)
-    if (kind === 'car') {
-      const f = Math.max(8, (rt.rpm / 60) * 2) // 4-cyl: two firing pulses per revolution
-      this.eng.forEach((o, i) => s(o.frequency, f * [1, 2, 0.5][i], 0.08))
-      s(this.engGain.gain, rt.rpm > 50 ? 0.16 + Math.min(0.2, rt.rpm / 25000) : 0)
-      s(this.engFilter.frequency, 260 + rt.rpm * 0.25)
-      s(this.turbo.frequency, 1800 + rt.rpm * 1.6)
-      s(this.turboGain.gain, rt.rpm > 1400 ? Math.min(0.025, (rt.rpm - 1400) / 80000) : 0)
-      s(this.jetGain.gain, 0); s(this.fanGain.gain, 0)
-    } else if (kind === 'aircraft') {
-      s(this.engGain.gain, 0); s(this.turboGain.gain, 0)
-      s(this.jetFilter.frequency, 380 + rt.n1 * 1600)
-      s(this.jetGain.gain, rt.n1 * 0.32 + rt.apu * 0.05)
-      s(this.fan.frequency, 120 + rt.n1 * 900)
-      s(this.fanGain.gain, rt.n1 * 0.03 + rt.apu * 0.012)
-    } else { s(this.engGain.gain, 0); s(this.turboGain.gain, 0); s(this.jetGain.gain, 0); s(this.fanGain.gain, 0) }
-  }
-  click(kind: 'click' | 'hyd' = 'click') {
-    const c = this.ctx, t = c.currentTime
-    const o = c.createOscillator(), g = c.createGain()
-    o.type = kind === 'hyd' ? 'sawtooth' : 'square'
-    o.frequency.setValueAtTime(kind === 'hyd' ? 180 : 1400, t)
-    o.frequency.exponentialRampToValueAtTime(kind === 'hyd' ? 420 : 300, t + (kind === 'hyd' ? 0.9 : 0.05))
-    g.gain.setValueAtTime(kind === 'hyd' ? 0.04 : 0.06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (kind === 'hyd' ? 1.0 : 0.07))
-    o.connect(g).connect(this.master); o.start(t); o.stop(t + 1.1)
+  if (fan) {
+    const n1 = inExplorer ? (live.n1 ?? 0) / 100 : rt.n1, n2 = inExplorer ? (live.n2 ?? 0) / 100 : Math.min(1, 0.55 + 0.45 * rt.n1)
+    const lit = inExplorer ? (live.flame ?? 0) > 0 : rt.n1 > 0.15
+    fan.update({ n1, n2, power: Math.max(0, Math.min(1, (n2 - 0.55) / 0.43)), lit, starting: !lit && n2 > 0.05, rev: 0, inside: false, behind: 0.4, pan: 0, ign: !lit && n2 > 0.15 })
+    if (apuT) apuT.set(1150 * rt.apu + 60, inExplorer ? 0 : 0.02 * rt.apu)
   }
 }
-
-let synth: Synth | null = null
 
 export function useSound() {
   const sound = useApp((s) => s.sound)
   const pulse = useApp((s) => s.pulse)
-  const screen = useApp((s) => s.screen)
   const vehicleId = useApp((s) => s.vehicleId)
   useEffect(() => {
-    if (sound && !synth) { try { synth = new Synth() } catch { getApp().set({ sound: false }) } }
-    if (synth && sound) synth.ctx.resume()
-    if (!synth) return
-    const kind = screen === 'machine' && vehicleId ? (vehicleId === 'a320' ? 'aircraft' : 'car') : null
-    const id = setInterval(() => synth?.update(sound, kind), 100)
-    return () => clearInterval(id)
-  }, [sound, screen, vehicleId])
-  useEffect(() => { if (sound && synth && pulse) synth.click(vehicleId === 'a320' ? 'hyd' : 'click') }, [pulse]) // eslint-disable-line
+    const id = setInterval(tick, 50)
+    return () => { clearInterval(id); stopAll() }
+  }, [])
+  useEffect(() => { if (sound) audio(); else { stopAll(); silence() } }, [sound])
+  // a mechanical action in the anatomy view (a door, a valve, the gear)
+  useEffect(() => { if (sound && pulse) shot(vehicleId === 'a320' ? 'clunk' : 'click', 0.5) }, [pulse]) // eslint-disable-line
+  // every button: a soft click
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => { if (getApp().sound && (e.target as HTMLElement | null)?.closest?.('button')) shot('click', 0.35) }
+    document.addEventListener('click', onClick, true)
+    return () => document.removeEventListener('click', onClick, true)
+  }, [])
 }
