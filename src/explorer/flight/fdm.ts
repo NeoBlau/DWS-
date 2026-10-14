@@ -1,6 +1,10 @@
 import * as THREE from 'three'
 import { DEST_X, RWY_LEN, RWY_W, AIRPORTS, surfaceAt } from './airports'
 import { createSys, stepSystems, burnFuel, power, ACT, type Sys } from './systems'
+import { model, massNow, type Model } from './physics'
+import { aeroForces } from './vlm'
+import { engineStep, newEngine, bliFan, type EngState as GasState } from './propulsion'
+import type { MassState } from './mass'
 
 /*
  * Flight dynamics model — rigid body, 6 degrees of freedom, for any aircraft described by a Spec.
@@ -94,7 +98,7 @@ export const STRIZH: Spec = {
   id: 'strizh', arch: 'electric', v1: 128, vr: 132, fuelKind: 'jet', lhv: 43.2, fuelLow: 900, mdd: 0.72, cruiseAt: { mach: 0.74, alt: 10668 }, wingCap: 5200, fuelArm: 6.5, oew: 37800, payload: 13500, fuelMax: 15000, fuelStart: 6500, refMass: 58000,
   S: 118, b: 47.3, c: 2.55, iw: 2.5 * DEG, CLA: 5.9, CD0: 0.0186, CDgear: 0.016, e: 0.86,
   I: V3(2.4e6, 4.6e6, 2.9e6),
-  tMax: 100000, eng: [V3(3.03, 1.85, -6.8), V3(3.03, 1.85, 6.8)], ffScale: 1, revFrac: 0.3, tsfc0: 0.0245, idleFF: 220, seats: 180,
+  tMax: 100000, eng: [V3(6.23, 1.85, -6.8), V3(6.23, 1.85, 6.8)], ffScale: 1, revFrac: 0.3, tsfc0: 0.0245, idleFF: 220, seats: 180,
   cgLayout: V3(-0.63, 3.0, 0),
   confs: [
     { id: '0', slat: 0, flap: 0, cl0: 0.22, as: 13, cd: 0, cm: 0, vfe: 340 },
@@ -105,11 +109,11 @@ export const STRIZH: Spec = {
     { id: 'FULL', slat: 25, flap: 40, cl0: 1.3, as: 18, cd: 0.06, cm: -0.1, vfe: 180 },
   ],
   vmo: 340, mmo: 0.82, vle: 270, vlo: 250, nzMax: 2.5, nzMaxFlaps: 2.0,
-  noseGear: V3(11.0, 0, 0), mainGear: V3(-1.45, 0, 2.3),
+  noseGear: V3(11.0, 0, 0), mainGear: V3(0.31, 0, 2.3),
   hard: [
     { id: 'tail', kind: 'tail', p: V3(-13.0, 2.35, 0) },
-    { id: 'engL', kind: 'engine', p: V3(2.4, 2.85, -6.8) }, { id: 'engR', kind: 'engine', p: V3(2.4, 2.85, 6.8) },
-    { id: 'tipL', kind: 'wingtip', p: V3(-5.0, 4.6, -23.6) }, { id: 'tipR', kind: 'wingtip', p: V3(-5.0, 4.6, 23.6) },
+    { id: 'engL', kind: 'engine', p: V3(5.6, 2.85, -6.8) }, { id: 'engR', kind: 'engine', p: V3(5.6, 2.85, 6.8) },
+    { id: 'tipL', kind: 'wingtip', p: V3(-1.8, 4.6, -23.6) }, { id: 'tipR', kind: 'wingtip', p: V3(-1.8, 4.6, 23.6) },
     { id: 'bellyF', kind: 'belly', p: V3(9.0, 1.4, 0) }, { id: 'bellyA', kind: 'belly', p: V3(-3.0, 1.33, 0) },
   ],
   wingY: 2.2,
@@ -131,10 +135,10 @@ export const STRIZH: Spec = {
  */
 export const VORTEX: Spec = {
   id: 'vortex', arch: 'electric', v1: 110, vr: 115, fuelKind: 'lh2', lhv: 120, fuelLow: 400, crossTie: true, mdd: 0.8, cruiseAt: { mach: 0.84, alt: 13100 },
-  wingCap: 0, fuelArm: 0, oew: 64000, payload: 22800, fuelMax: 9000, fuelStart: 2600, refMass: 89000,
-  S: 400, b: 52, c: 11, iw: 1.5 * DEG, CLA: 4.6, CD0: 0.0086, CDgear: 0.0045, e: 0.92,
+  wingCap: 0, fuelArm: 0, oew: 64000, payload: 22800, fuelMax: 4000, fuelStart: 2600, refMass: 92000,
+  S: 553, b: 56, c: 11.9, iw: 1.5 * DEG, CLA: 4.6, CD0: 0.0086, CDgear: 0.0045, e: 0.92,
   I: V3(4.6e6, 9.4e6, 6.2e6),
-  tMax: 140000, eng: [V3(-10.9, 1.6, -3.2), V3(-10.9, 1.6, 3.2)], ffScale: 1, revFrac: 0.38, tsfc0: 0.0071, idleFF: 60, seats: 240,
+  tMax: 140000, eng: [V3(-0.37, 1.5, -3.6), V3(-0.37, 1.5, 3.6)], ffScale: 1, revFrac: 0.38, tsfc0: 0.0071, idleFF: 60, seats: 240,
   cgLayout: V3(-0.63, 3.0, 0),
   confs: [
     { id: '0', slat: 0, flap: 0, cl0: 0.08, as: 15, cd: 0, cm: 0, vfe: 340 },
@@ -145,12 +149,12 @@ export const VORTEX: Spec = {
     { id: 'FULL', slat: 20, flap: 16, cl0: 0.44, as: 16.5, cd: 0.02, cm: -0.022, vfe: 180 },
   ],
   vmo: 340, mmo: 0.86, vle: 270, vlo: 250, nzMax: 2.5, nzMaxFlaps: 2.0,
-  noseGear: V3(11.0, 0, 0), mainGear: V3(-3.0, 0, 4.2),
+  noseGear: V3(11.0, 0, 0), mainGear: V3(2.7, 0, 4.0),
   hard: [
-    { id: 'tail', kind: 'tail', p: V3(-18.4, 3.35, 0) },
-    { id: 'engL', kind: 'engine', p: V3(-11.5, 3.9, -7.3) }, { id: 'engR', kind: 'engine', p: V3(-11.5, 3.9, 7.3) },
-    { id: 'tipL', kind: 'wingtip', p: V3(-8.9, 4.35, -26) }, { id: 'tipR', kind: 'wingtip', p: V3(-8.9, 4.35, 26) },
-    { id: 'bellyF', kind: 'belly', p: V3(12.0, 1.4, 0) }, { id: 'bellyA', kind: 'belly', p: V3(-6.0, 1.9, 0) },
+    { id: 'tail', kind: 'tail', p: V3(-2.9, 3.35, 0) },
+    { id: 'engL', kind: 'engine', p: V3(-1.0, 3.9, -6.4) }, { id: 'engR', kind: 'engine', p: V3(-1.0, 3.9, 6.4) },
+    { id: 'tipL', kind: 'wingtip', p: V3(-13.8, 4.35, -28) }, { id: 'tipR', kind: 'wingtip', p: V3(-13.8, 4.35, 28) },
+    { id: 'bellyF', kind: 'belly', p: V3(12.0, 1.4, 0) }, { id: 'bellyA', kind: 'belly', p: V3(0, 1.9, 0) },
   ],
   wingY: 0.4,
   Cm0: 0.02, CmA: -0.42, CmE: 0.3, CmT: 0.42, CmQ: -7,
@@ -178,21 +182,24 @@ export function onRunway(x: number, z: number) { return surfaceAt(x, z) === 'run
 
 /* ------------------------------------------------------------------ contact points (body frame) */
 export type ContactKind = 'nose' | 'main' | 'tail' | 'engine' | 'wingtip' | 'belly'
-interface Contact { id: string; kind: ContactKind; r: THREE.Vector3; k: number; c: number; leg: number }
+interface Contact { id: string; kind: ContactKind; p: THREE.Vector3; k: number; c: number; leg: number } // p: drawing frame
 export const STATIC_STROKE = 0.22
-function contactsOf(sp: Spec) {
-  const W = sp.refMass * G
-  const L = (p: THREE.Vector3, dy = 0) => p.clone().add(V3(0, dy, 0)).sub(sp.cgLayout)
-  // share of weight on the nose leg from the geometry (CG between nose and mains)
-  const noseShare = (sp.cgLayout.x - sp.mainGear.x) / (sp.noseGear.x - sp.mainGear.x)
+/** gear springs sized so the struts sit at their static stroke under the real weight split nose / mains */
+function contactsOf(sp: Spec, cg: number[], mass: number) {
+  const W = mass * G
+  const L = (p: THREE.Vector3, dy = 0) => p.clone().add(V3(0, dy, 0))
+  const noseShare = clamp((cg[0] - sp.mainGear.x) / (sp.noseGear.x - sp.mainGear.x), 0.02, 0.5)
   const gear: Contact[] = [
-    { id: 'nose', kind: 'nose', r: L(sp.noseGear, -STATIC_STROKE), k: (noseShare * W) / STATIC_STROKE, c: 4.6e4, leg: 0 },
-    { id: 'mainL', kind: 'main', r: L(V3(sp.mainGear.x, 0, -sp.mainGear.z), -STATIC_STROKE), k: (((1 - noseShare) / 2) * W) / STATIC_STROKE, c: 2.4e5, leg: 1 },
-    { id: 'mainR', kind: 'main', r: L(sp.mainGear, -STATIC_STROKE), k: (((1 - noseShare) / 2) * W) / STATIC_STROKE, c: 2.4e5, leg: 2 },
+    { id: 'nose', kind: 'nose', p: L(sp.noseGear, -STATIC_STROKE), k: (noseShare * W) / STATIC_STROKE, c: 0.72 * Math.sqrt(noseShare * W / STATIC_STROKE * noseShare * mass), leg: 0 },
+    { id: 'mainL', kind: 'main', p: L(V3(sp.mainGear.x, 0, -sp.mainGear.z), -STATIC_STROKE), k: (((1 - noseShare) / 2) * W) / STATIC_STROKE, c: 0.6 * Math.sqrt((((1 - noseShare) / 2) * W) / STATIC_STROKE * ((1 - noseShare) / 2) * mass), leg: 1 },
+    { id: 'mainR', kind: 'main', p: L(sp.mainGear, -STATIC_STROKE), k: (((1 - noseShare) / 2) * W) / STATIC_STROKE, c: 0.6 * Math.sqrt((((1 - noseShare) / 2) * W) / STATIC_STROKE * ((1 - noseShare) / 2) * mass), leg: 2 },
   ]
-  const hard: Contact[] = sp.hard.map((h) => ({ id: h.id, kind: h.kind, r: L(h.p), k: 4e6, c: 4e5, leg: -1 }))
-  return { gear, hard, static: gear.map((g) => g.k * STATIC_STROKE) }
+  const hard: Contact[] = sp.hard.map((h) => ({ id: h.id, kind: h.kind, p: h.p.clone(), k: 4e6, c: 4e5, leg: -1 }))
+  return { gear, hard, static: gear.map((g) => g.k * STATIC_STROKE), m0: mass }
 }
+export type Contacts = ReturnType<typeof contactsOf>
+/** the physical state the model carries along: engines (gas-path state), mass properties, contacts */
+export interface Phys { m: Model; eng: [GasState, GasState]; ms: MassState; msT: number; contacts: Contacts; cgH: number; aeroTick?: boolean; aeroLast?: ReturnType<typeof aeroForces> }
 
 /* ------------------------------------------------------------------ state */
 export type Law = 'normal' | 'direct'
@@ -253,6 +260,7 @@ export type SimEvent =
 export interface Sim {
   spec: Spec
   sys: Sys
+  phys: Phys
   t: number
   pos: THREE.Vector3
   vel: THREE.Vector3
@@ -283,9 +291,11 @@ export function defaultControls(): Controls {
 
 export type Start = 'gate' | 'runway' | 'approach' | 'cruise'
 export function createSim(start: Start = 'runway', spec: Spec = A320): Sim {
+  const mdl = model(spec.id, spec.confs)
+  spec.oew = mdl.oew
   const run = (): Engine => ({ state: 'run', n1: 19.5, n2: 58, egt: 420, tStart: 0, lit: true, litT: 0, cool: 0 })
   const s: Sim = {
-    spec, sys: createSys(start === 'gate', spec.fuelStart, spec.wingCap), t: 0, pos: V3(80, spec.cgLayout.y, 0), vel: V3(0, 0, 0), quat: new THREE.Quaternion(), w: V3(0, 0, 0),
+    spec, sys: createSys(start === 'gate', spec.fuelStart, spec.wingCap), phys: undefined as unknown as Phys, t: 0, pos: V3(80, spec.cgLayout.y, 0), vel: V3(0, 0, 0), quat: new THREE.Quaternion(), w: V3(0, 0, 0),
     n1: [19.5, 19.5], eng: [run(), run()], fuel: spec.fuelStart, ctl: defaultControls(),
     srf: { elev: 0, ail: 0, rud: 0, ths: 0, splL: 0, splR: 0, gndSpl: 0, conf: 0, confTarget: 0, gear: 1, steer: 0 },
     dmg: { flaps: 0, flapSide: 1, gearStuck: false, legs: [false, false, false], structure: 0, tail: false, belly: false },
@@ -321,10 +331,80 @@ export function createSim(start: Start = 'runway', spec: Spec = A320): Sim {
     s.n1 = [72, 72]; s.eng.forEach((e) => { e.n1 = 72; e.n2 = 87 }); setFuel(s, 6500); s.sys.cab = 2200; s.airborne = true; s.everAirborne = true; s.fbw.blend = 1
   }
   s.flags.gearLever = s.ctl.gearDown
+  initPhys(s, start)
   derive(s, 0)
+  if (start === 'approach' || start === 'cruise') trimSim(s)
   return s
 }
-export const massOf = (s: Sim) => s.spec.oew + s.spec.payload + s.fuel
+function initPhys(s: Sim, start: Start) {
+  const mdl = model(s.spec.id, s.spec.confs)
+  const ms = massNow(mdl, s.spec.payload, s.sys.tank)
+  const running = start !== 'gate'
+  s.phys = { m: mdl, eng: [newEngine(running, mdl.geo.engine), newEngine(running, mdl.geo.engine)], ms, msT: 0, contacts: contactsOf(s.spec, ms.cg, ms.m), cgH: ms.cg[1] }
+  if (!s.airborne) s.pos.y = ms.cg[1]
+  if (start === 'approach' || start === 'cruise') s.phys.eng.forEach((e) => { e.N1 = 0.6; e.N2 = 0.8; e.T4 = 1200; e.Wf = 0.3 })
+}
+/** centre of gravity in % of the mean aerodynamic chord */
+export const cgMac = (s: Sim) => ((s.phys.m.aero.xref - s.phys.ms.cg[0]) / s.phys.m.aero.cref) * 100
+/**
+ * trim for the airborne starts: find angle of attack and stabiliser setting that give lift = weight and no pitching
+ * moment at the start speed, using the same aerodynamic model (Newton iterations)
+ */
+function trimSim(s: Sim) {
+  const ph = s.phys, aero = ph.m.aero, conf = confAt(s.srf.conf, s.spec.confs), atm = isa(s.pos.y)
+  const V = s.vel.length(), gam = Math.asin(clamp(s.vel.y / V, -1, 1)), W = ph.ms.m * G
+  const ev = (al: number, ths: number) => aeroForces(aero, { rho: atm.rho, a: atm.a, mu: 1.7e-5, v: [V * Math.cos(al), -V * Math.sin(al), 0], w: [0, 0, 0], cg: ph.ms.cg,
+    ctl: { elev: 0, ths, ail: 0, rud: 0, splL: 0, splR: 0, gnd: 0, flap: conf.flap, slat: conf.slat, gear: s.srf.gear, flapL: 1, flapR: 1 }, ground: { on: false, n: [0, 1, 0], d: 0 }, t: 0 })
+  let al = 3 * DEG, th = 0
+  for (let it = 0; it < 12; it++) {
+    const r0 = ev(al, th), e1 = r0.lift - W * Math.cos(gam), e2 = r0.M[2]
+    const ra = ev(al + 0.2 * DEG, th), rt = ev(al, th + 0.2 * DEG)
+    const a11 = (ra.lift - r0.lift) / (0.2 * DEG), a12 = (rt.lift - r0.lift) / (0.2 * DEG), a21 = (ra.M[2] - r0.M[2]) / (0.2 * DEG), a22 = (rt.M[2] - r0.M[2]) / (0.2 * DEG)
+    const det = a11 * a22 - a12 * a21
+    if (Math.abs(det) < 1e-6) break
+    al = clamp(al - (e1 * a22 - e2 * a12) / det, -4 * DEG, 14 * DEG)
+    th = clamp(th - (a11 * e2 - a21 * e1) / det, -4 * DEG, 13.5 * DEG)
+  }
+  s.quat.setFromEuler(new THREE.Euler(0, 0, al + gam, 'YZX'))
+  s.srf.ths = th
+  // engines: find the fan-speed target whose thrust balances the drag on this path
+  const drag = ev(al, th).drag + W * Math.sin(gam)
+  const amb = { T0: atm.T, p0: atm.p, M: V / atm.a, V, rho: atm.rho }
+  let lo = 0.2, hi = 1.0
+  for (let it = 0; it < 14; it++) {
+    const mid = (lo + hi) / 2, e = newEngine(true, ph.m.geo.engine)
+    let T = 0
+    for (let k = 0; k < 2400; k++) T = engineThrust(s, e, mid, amb, H)
+    if (2 * T > drag) hi = mid; else lo = mid
+  }
+  const tgt = (lo + hi) / 2
+  ph.eng = [newEngine(true, ph.m.geo.engine), newEngine(true, ph.m.geo.engine)]
+  for (let k = 0; k < 4800; k++) ph.eng.forEach((e) => engineThrust(s, e, tgt, amb, H))
+  s.ctl.lever = leverFor(s.spec, tgt)
+  s.n1 = [ph.eng[0].N1 * 100, ph.eng[1].N1 * 100]; s.eng.forEach((e, i) => { e.n1 = s.n1[i]; e.n2 = ph.eng[i].N2 * 100 })
+}
+/** thrust of one engine (with its share of the electric fans) at a FADEC target, for trimming */
+function engineThrust(s: Sim, e: GasState, target: number, amb: { T0: number; p0: number; M: number; V: number; rho: number }, dt: number) {
+  const g = s.phys.m.geo.engine, des = s.phys.m.des
+  const o = engineStep(e, g, des, amb, { target, fuel: true, ignite: true, starter: 0, rev: 0, bleed: 0, leverStart: 0, n2min: 0.66 }, dt)
+  let T = o.thrust
+  if (g.kind === 'turboelectric') T += ((g.fans ?? 8) / 2) * bliFan((o.Pshaft * 0.975) / (g.fans ?? 8), amb.V, amb.rho, des.fan!.Ae, g.bli ?? 0)
+  return T
+}
+/** FADEC target from the thrust lever: fan speed N1 (turbofan) or core speed N2 (open fan, turbo-electric) */
+export function fadecTarget(sp: Spec, lever: number, rev: number, airborne: boolean) {
+  const kind = model(sp.id, sp.confs).geo.engine.kind
+  const n1 = rev === 2 ? N1_MAXREV : rev === 1 ? N1_IDLE_GND + 6 : leverN1(lever, airborne ? N1_IDLE_FLT : N1_IDLE_GND)
+  if (kind === 'turbofan') return n1 / 100
+  const f = clamp((n1 - N1_IDLE_GND) / (96 - N1_IDLE_GND), 0, 1)
+  return 0.6 + (kind === 'turboelectric' ? 0.32 : 0.34) * f
+}
+function leverFor(sp: Spec, target: number) {
+  let lo = 0, hi = 1
+  for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2; if (fadecTarget(sp, m, 0, true) > target) hi = m; else lo = m }
+  return (lo + hi) / 2
+}
+export const massOf = (s: Sim) => (s.phys ? s.phys.ms.m : s.spec.oew + s.spec.payload + s.fuel)
 /** load fuel: wings first, then the centre tank */
 export function setFuel(s: Sim, kg: number) {
   const w = Math.min(kg / 2, s.spec.wingCap)
@@ -335,9 +415,10 @@ export function setFuel(s: Sim, kg: number) {
 /* ------------------------------------------------------------------ atmosphere & engines */
 export function isa(h: number) {
   const T = 288.15 - 0.0065 * Math.max(0, Math.min(h, 11000))
+  const p = h <= 11000 ? 101325 * Math.pow(T / 288.15, 5.2559) : 22632 * Math.exp(-(h - 11000) / 6341.6)
   // troposphere: ρ ∝ T^4.256; above 11 km (isothermal stratosphere) ρ falls exponentially
   const rho = 1.225 * Math.pow(T / 288.15, 4.256) * (h > 11000 ? Math.exp(-(h - 11000) / 6341.6) : 1)
-  return { T, rho, a: Math.sqrt(1.4 * 287.05 * T), sigma: rho / 1.225 }
+  return { T, p, rho, a: Math.sqrt(1.4 * 287.05 * T), sigma: rho / 1.225, mu: (1.458e-6 * T ** 1.5) / (T + 110.4) }
 }
 export const DETENT = { IDLE: 0, CL: 0.6, FLX: 0.85, TOGA: 1 }
 export function detentName(l: number) {
@@ -368,10 +449,8 @@ function thrustOf(sp: Spec, n1: number, rev: boolean, sigma: number, mach: numbe
 /* ------------------------------------------------------------------ temporaries */
 const _vb = V3(0, 0, 0), _f = V3(0, 0, 0), _m = V3(0, 0, 0), _tmp = V3(0, 0, 0), _tmp2 = V3(0, 0, 0)
 const _qi = new THREE.Quaternion(), _pw = V3(0, 0, 0), _vp = V3(0, 0, 0), _roll = V3(0, 0, 0), _lat = V3(0, 0, 0)
-const _fw = V3(0, 0, 0), _iw = V3(0, 0, 0), _dq = new THREE.Quaternion(), _fwd = V3(0, 0, 0)
+const _fw = V3(0, 0, 0), _iw = V3(0, 0, 0), _dq = new THREE.Quaternion(), _fwd = V3(0, 0, 0), _rc = V3(0, 0, 0)
 const UP = V3(0, 1, 0)
-const CONTACTS = new Map<string, ReturnType<typeof contactsOf>>()
-const contacts = (sp: Spec) => { let c = CONTACTS.get(sp.id); if (!c) { c = contactsOf(sp); CONTACTS.set(sp.id, c) } return c }
 
 export function event(s: Sim, e: SimEvent, v?: number) {
   // the same event within a few seconds is one event
@@ -403,17 +482,19 @@ function derive(s: Sim, dt: number) {
   d.p = s.w.x; d.q = s.w.z; d.r = -s.w.y
   d.vs = (s.vel.y / FT) * 60
   d.alt = s.pos.y / FT
-  d.ra = Math.max(0, (s.pos.y - sp.cgLayout.y) / FT)
+  d.ra = Math.max(0, (s.pos.y - (s.phys?.cgH ?? sp.cgLayout.y)) / FT)
   const conf = confAt(s.srf.conf, sp.confs)
   d.confId = sp.confs[Math.round(s.srf.conf)].id
   d.vfe = conf.vfe
-  d.alphaStall = conf.as - sp.iw
+  // stall angle and maximum lift of this configuration — found by sweeping the aerodynamic model
+  const st = model(sp.id, sp.confs).stall, ci = clamp(Math.floor(s.srf.conf), 0, st.length - 1), cj = Math.min(st.length - 1, ci + 1), ck = clamp(s.srf.conf - ci, 0, 1)
+  d.alphaStall = st[ci].alpha + (st[cj].alpha - st[ci].alpha) * ck
   d.alphaProt = d.alphaStall - 2.8 * DEG
   d.alphaMax = d.alphaStall - 0.8 * DEG
   d.mass = massOf(s)
   d.weight = d.mass * G
-  const clmax = conf.cl0 + sp.CLA * conf.as
-  d.vs1g = Math.sqrt((2 * d.weight) / (1.225 * sp.S * clmax)) / KT
+  const clmax = st[ci].clmax + (st[cj].clmax - st[ci].clmax) * ck
+  d.vs1g = Math.sqrt((2 * d.weight) / (1.225 * model(sp.id, sp.confs).aero.Sref * clmax)) / KT
   d.vls = d.vs1g * (s.srf.conf < 0.5 ? 1.28 : 1.23)
   d.surface = surfaceAt(s.pos.x, s.pos.z)
   d.onRunway = d.surface === 'runway'
@@ -655,7 +736,12 @@ export function step(s: Sim, dt = H) {
   stepSystems(s, dt)
   flyByWire(s, dt)
   systems(s, dt)
-  const mass = d.mass, W = d.weight, ms = mass / sp.refMass
+  const ph = s.phys
+  // mass, centre of gravity and inertia follow the fuel actually left in each tank
+  ph.msT -= dt
+  if (ph.msT <= 0) { ph.ms = massNow(ph.m, sp.payload, s.sys.tank); ph.msT = 0.5 }
+  const mass = ph.ms.m, W = mass * G, ms = mass / ph.contacts.m0, cg = ph.ms.cg
+  d.mass = mass; d.weight = W
 
   _f.set(0, 0, 0); _m.set(0, 0, 0)
   _qi.copy(s.quat).invert()
@@ -663,62 +749,40 @@ export function step(s: Sim, dt = H) {
   const V = d.V
   const conf = confAt(r.conf, sp.confs)
 
-  /* ---------- aerodynamics */
-  const hw = Math.max(0.5, s.pos.y + sp.wingY)
-  const g16 = (16 * hw) / sp.b, phiGe = (g16 * g16) / (1 + g16 * g16)
-  d.ge = phiGe
-  let lift = 0, drag = 0
-  if (V > 1) {
-    const qS = d.qbar * sp.S
-    const aw = d.alpha + sp.iw
-    const qh = (d.q * sp.c) / (2 * V), ph = (d.p * sp.b) / (2 * V), rh = (d.r * sp.b) / (2 * V)
-    // a torn flap removes half of the flap lift increment and rolls the aircraft toward the good side's opposite
-    const flapLoss = dm.flaps === 2 ? 0.5 * Math.max(0, conf.cl0 - sp.confs[0].cl0) : 0
-    const cl0 = conf.cl0 - flapLoss
-    const clmax = cl0 + sp.CLA * conf.as
-    let CL: number, stall = 0
-    if (aw <= conf.as) CL = cl0 + sp.CLA * aw
-    else { const o = aw - conf.as; stall = o; CL = Math.max(clmax * 0.6, clmax - 2.2 * o - 7 * o * o) }
-    if (aw < -0.25) CL = cl0 + sp.CLA * -0.25
-    CL *= 1 + 0.1 * (1 - phiGe)
-    CL += 0.25 * r.elev + 0.15 * r.ths + 4.5 * qh
-    CL -= 0.55 * r.gndSpl + 0.14 * ((r.splL + r.splR) / 2) * (1 - r.gndSpl)
-    const kInd = 1 / (Math.PI * sp.e * ((sp.b * sp.b) / sp.S))
-    const CD = sp.CD0 + conf.cd + sp.CDgear * r.gear + kInd * phiGe * CL * CL + 0.05 * r.gndSpl + 0.03 * ((r.splL + r.splR) / 2) + 0.35 * d.beta * d.beta + 0.9 * stall
-      + (d.mach > sp.mdd ? 0.25 * (d.mach - sp.mdd) ** 2 : 0) + (dm.gearStuck ? 0.01 : 0) + (dm.flaps === 2 ? 0.01 : 0)
-      + (s.eng[0].state !== 'run' ? 0.0015 : 0) + (s.eng[1].state !== 'run' ? 0.0015 : 0)
-    const CY = -0.85 * d.beta - 0.22 * r.rud
-    const Cm = sp.Cm0 + conf.cm - flapLoss * 0.1 + sp.CmA * aw + sp.CmE * r.elev + sp.CmT * r.ths + sp.CmQ * qh - 0.035 * (1 - phiGe) - 0.4 * stall + 0.012 * r.gear - 0.05 * r.gndSpl
-    // in a deep stall one wing usually stalls first: the aircraft drops a wing toward the sideslip
-    const wingDrop = stall > 2 * DEG ? -0.02 * Math.sign(d.beta || 1) * Math.min(1, (stall - 2 * DEG) / (4 * DEG)) : 0
-    const Cl = -0.1 * d.beta + sp.ClP * ph + 0.1 * rh + sp.Cla * r.ail + 0.06 * (r.splR - r.splL) + 0.012 * r.rud + wingDrop
-      + (dm.flaps === 2 ? 0.03 * dm.flapSide * Math.min(1, flapLoss / 0.3) : 0)
-    const Cn = sp.Cnb * d.beta + sp.Cnr * rh - 0.035 * ph - 0.008 * r.ail + sp.Cnd * r.rud
-    lift = CL * qS; drag = CD * qS
-    const ca = Math.cos(d.alpha), sa = Math.sin(d.alpha)
-    _f.x += lift * sa - drag * ca
-    _f.y += lift * ca + drag * sa
-    _f.z += CY * qS
-    _m.x += Cl * qS * sp.b
-    _m.y += -Cn * qS * sp.b
-    _m.z += Cm * qS * sp.c
-    d.stall = stall > 0
-    if (stall > 0.5 * DEG && s.airborne) event(s, 'stall')
-  }
-  d.lift = lift; d.drag = drag
-
-  /* ---------- engines: start, run, fail, flame-out */
+  /* ---------- aerodynamics: vortex lattice on the real geometry (vlm.ts) */
   const atm = isa(s.pos.y)
+  // the ground plane seen from the aircraft (for the mirror vortices of ground effect)
+  _tmp.set(0, 1, 0).applyQuaternion(_qi)
+  const gn = [_tmp.x, _tmp.y, _tmp.z]
+  // the lattice is solved at 120 Hz (every other physics step); forces are held in between
+  ph.aeroTick = !ph.aeroTick
+  const aero = ph.aeroTick && ph.aeroLast ? ph.aeroLast : aeroForces(ph.m.aero, {
+    rho: atm.rho, a: atm.a, mu: atm.mu, v: [_vb.x, _vb.y, _vb.z], w: [s.w.x, s.w.y, s.w.z], cg,
+    ctl: { elev: r.elev, ths: r.ths, ail: r.ail, rud: r.rud, splL: r.splL, splR: r.splR, gnd: r.gndSpl, flap: conf.flap, slat: conf.slat, gear: r.gear,
+      flapL: dm.flaps === 2 && dm.flapSide === -1 ? 0 : 1, flapR: dm.flaps === 2 && dm.flapSide === 1 ? 0 : 1 },
+    ground: { on: s.pos.y < ph.m.aero.bref * 1.5, n: gn, d: gn[0] * cg[0] + gn[1] * cg[1] + gn[2] * cg[2] - s.pos.y }, t: s.t,
+  })
+  ph.aeroLast = aero
+  _f.x += aero.F[0]; _f.y += aero.F[1]; _f.z += aero.F[2]
+  _m.x += aero.M[0]; _m.y += aero.M[1]; _m.z += aero.M[2]
+  d.lift = aero.lift; d.drag = aero.drag; d.ge = s.pos.y < ph.m.aero.bref ? s.pos.y / ph.m.aero.bref : 1
+  d.stall = aero.wingStall > 0.2
+  if (d.stall && s.airborne) event(s, 'stall')
+  void V
+
+  /* ---------- engines: gas-path model (propulsion.ts); this block is the start / run / fail logic around it */
   const y = s.sys, elecArch = sp.arch === 'electric'
-  const idle = s.airborne ? N1_IDLE_FLT : N1_IDLE_GND
+  const g = ph.m.geo.engine, des = ph.m.des
+  const amb = { T0: atm.T, p0: atm.p, M: d.mach, V: d.V, rho: atm.rho }
   const lever = s.fbw.alphaFloor ? 1 : c.lever
-  const tgtRun = c.rev === 2 ? N1_MAXREV : c.rev === 1 ? N1_IDLE_GND + 6 : leverN1(lever, idle)
-  const windN2 = Math.min(30, d.ias * 0.09) // an unpowered core still turns in the airflow
   // the starter: compressed air from the APU / another engine (A320) or the electric starter-generator (more-electric)
   const starter = elecArch ? (y.ac[0] || y.ac[1] ? 1 : 0) : clamp((y.bleed - 12) / 22, 0, 1)
   const ign = y.sw.engMode === 'start' && y.dcEss
+  const bleedEach = !elecArch && (y.sw.packs[0] || y.sw.packs[1]) && y.bleedSrc.startsWith('ENG') ? 0.5 : 0
+  let fanPowerTotal = 0
+  const coreThrust = [0, 0]
   for (let i = 0; i < 2; i++) {
-    const e = s.eng[i]
+    const e = s.eng[i], ge = ph.eng[i]
     const master = c.master[i]
     const fed = y.feed[i] !== ''
     e.cool = Math.max(0, e.cool - dt)
@@ -727,69 +791,50 @@ export function step(s: Sim, dt = H) {
     const restartable = e.state === 'off' || (e.state === 'failed' && e.why !== 'strike')
     if (!master) s.flags['ab' + i] = false
     if (restartable && master && y.sw.engMode === 'start' && y.dcEss && e.cool === 0 && !s.flags['ab' + i]) {
-      e.state = 'starting'; e.tStart = s.t; e.lit = false; y.startFault[i] = ''; event(s, 'engineStart', i + 1)
+      e.state = 'starting'; e.tStart = s.t; e.lit = false; e.litT = 0; y.startFault[i] = ''; event(s, 'engineStart', i + 1)
     }
     if (master && !s.flags['m' + i] && e.state === 'off') event(s, !y.dcEss ? 'noPower' : 'modeNotStart', i + 1)
     s.flags['m' + i] = master
-    if ((e.state === 'run' || e.state === 'starting') && !master) { e.state = 'off'; e.lit = false }
-    if (e.state === 'failed' && !master && e.why !== 'strike') { e.state = 'off'; e.lit = false }
-    if ((e.state === 'run' || (e.state === 'starting' && e.lit)) && !fed) { e.state = 'failed'; e.why = 'fuel'; e.lit = false; event(s, 'flameout', i + 1) }
-    let n1T: number, k: number
-    if (e.state === 'run') {
-      n1T = tgtRun; k = n1T > e.n1 ? (e.n1 < 50 ? 0.2 : 0.5) : 0.45
-      e.n1 += (n1T - e.n1) * Math.min(1, k * dt)
-      e.n2 = 58 + (e.n1 - N1_IDLE_GND) * 0.55
-    } else if (e.state === 'starting') {
+    if ((e.state === 'run' || e.state === 'starting') && !master) { e.state = 'off' }
+    if (e.state === 'failed' && !master && e.why !== 'strike') { e.state = 'off' }
+    const starting = e.state === 'starting', running = e.state === 'run'
+    const abort = (why: string, cool = 30) => { e.state = 'off'; e.cool = cool; s.flags['ab' + i] = true; y.startFault[i] = why; ge.lit = false; event(s, 'startFault', i + 1) }
+    const out = engineStep(ge, g, des, amb, {
+      target: fadecTarget(sp, lever, running ? c.rev : 0, s.airborne), fuel: (starting || running) && fed, ignite: starting && ign,
+      starter: starting && ge.N2 < 0.5 ? 150e3 * starter * (1 - ge.N2 / 0.55) : 0, rev: running ? c.rev : 0, bleed: bleedEach,
+      leverStart: starting ? c.lever : 0, n2min: s.airborne ? 0.66 : 0.58, starting,
+    }, dt)
+    if (starting) {
       const ts = s.t - e.tStart
-      if (!e.lit) {
-        // dry crank: the starter spins the HP rotor; fuel and ignition at 16 % N2
-        const n2T = Math.max(26 * starter, windN2)
-        e.n2 += (n2T - e.n2) * Math.min(1, 0.35 * dt)
-        if (e.n2 >= 16 && fed && ign) { e.lit = true; e.litT = s.t; event(s, 'lightOff', i + 1) }
-        if (ts > 45) {
-          // the FADEC aborts a start that does not light or hangs (too little bleed pressure, no fuel, no ignition)
-          e.state = 'off'; e.cool = 30; s.flags['ab' + i] = true
-          y.startFault[i] = e.n2 < 16 ? (elecArch ? 'NO STARTER POWER' : 'START VALVE — BLEED PRESS LO') : !fed ? 'NO FUEL FEED' : 'IGN FAULT'
-          event(s, 'startFault', i + 1)
-        }
-      } else {
-        // after light-off the turbine accelerates the rotor, helped by the starter up to 50 % N2
-        e.n2 += (1.7 + 1.1 * (e.n2 < 50 ? starter : 0)) * dt * (e.n2 < 58 ? 1 : 0)
-        if (e.n2 < 30 && s.t - e.litT > 25) { e.state = 'off'; e.cool = 30; s.flags['ab' + i] = true; y.startFault[i] = 'HUNG START'; event(s, 'startFault', i + 1) }
-        if (e.egt > 725) { e.state = 'off'; e.cool = 40; s.flags['ab' + i] = true; y.startFault[i] = 'EGT OVERLIMIT — HOT START'; event(s, 'startFault', i + 1) }
-        if (e.n2 >= 57.5) { e.state = 'run'; e.n2 = 58; event(s, 'engineRun', i + 1) }
-      }
-      e.n1 = Math.max(0, (e.n2 - 15) * 0.45)
-    } else {
-      e.n2 += (windN2 - e.n2) * Math.min(1, 0.12 * dt)
-      e.n1 += (windN2 * 0.6 - e.n1) * Math.min(1, 0.12 * dt)
+      if (ge.lit && !e.litT) { e.litT = s.t; event(s, 'lightOff', i + 1) }
+      if (!ge.lit && ts > 45) abort(ge.N2 < 0.16 ? (elecArch ? 'NO STARTER POWER' : 'START VALVE — BLEED PRESS LO') : !fed ? 'NO FUEL FEED' : 'IGN FAULT')
+      else if (ge.lit && out.egt > 725) abort('EGT OVERLIMIT — HOT START', 40)
+      else if (ge.lit && s.t - e.litT > 40 && ge.N2 < 0.5) abort('HUNG START')
+      else if (ge.lit && ge.N2 >= 0.575) { e.state = 'run'; event(s, 'engineRun', i + 1) }
     }
+    if (running && !ge.lit) { e.state = 'failed'; e.why = fed ? 'flameout' : 'fuel'; event(s, 'flameout', i + 1) }
+    if (running && !fed && !e.why) { /* the gas path loses fuel pressure next step */ }
+    e.lit = ge.lit
+    e.n1 = out.n1; e.n2 = out.n2; e.egt = out.egt + 273.15 > 300 ? out.egt : 25
     s.n1[i] = e.n1
-    const running = e.state === 'run'
-    e.lit = running || (e.state === 'starting' && e.lit)
-    // reversers are moved hydraulically: engine 1 by green, engine 2 by yellow (electrically on the more-electric designs)
-    const revOK = power(s, i === 0 ? 'G' : 'Y') > 0
-    const T = e.lit ? thrustOf(sp, e.n1, running && c.rev > 0 && revOK, atm.sigma, d.mach) : 0
-    d.thrust[i] = T
-    const fT = clamp((e.n1 - N1_IDLE_GND) / (96 - N1_IDLE_GND), 0, 1)
-    // EGT: light-off peak; opening the thrust lever during a start over-fuels the engine — a hot start
-    const egtT = e.lit ? 420 + 430 * fT + (e.state === 'starting' ? 270 * Math.exp(-((s.t - e.litT - 5) ** 2) / 8) + 520 * c.lever : 0) : 25 + Math.max(0, e.egt - 25) * 0.995
-    e.egt += (egtT - e.egt) * Math.min(1, dt * 0.8)
     d.egt[i] = e.egt
-    // fuel flow follows the thrust actually produced: ṁ = T · TSFC, with TSFC rising with Mach
-    d.ff[i] = e.lit ? Math.max(sp.idleFF * Math.max(0.6, atm.sigma) * (e.state === 'starting' ? 0.6 : 1), Math.abs(T) * sp.tsfc0 * (1 + 0.85 * d.mach)) * sp.ffScale : 0
+    d.ff[i] = out.ff
+    coreThrust[i] = out.thrust
+    fanPowerTotal += out.Pshaft
   }
-  // turbo-electric designs share all fans on one bus: the thrust is the same on both sides whatever core runs
-  if (sp.crossTie && d.thrust[0] >= 0 && d.thrust[1] >= 0) { const m = (d.thrust[0] + d.thrust[1]) / 2; d.thrust[0] = m; d.thrust[1] = m }
+  if (g.kind === 'turboelectric') {
+    // generators → common bus → 8 electric fans that swallow the body's boundary layer
+    const per = (fanPowerTotal * 0.975) / (g.fans ?? 8), half = (g.fans ?? 8) / 2
+    let side = half * bliFan(per, d.V, atm.rho, des.fan!.Ae, g.bli ?? 0)
+    if (c.rev > 0 && !s.airborne) side = -0.4 * half * bliFan(per, 0, atm.rho, des.fan!.Ae, 0)
+    d.thrust[0] = coreThrust[0] + side; d.thrust[1] = coreThrust[1] + side
+  } else { d.thrust[0] = coreThrust[0]; d.thrust[1] = coreThrust[1] }
   for (let i = 0; i < 2; i++) {
     _tmp.set(d.thrust[i], 0, 0)
     _f.add(_tmp)
-    _m.add(_tmp2.copy(sp.eng[i]).cross(_tmp))
+    _m.add(_tmp2.set(sp.eng[i].x + sp.cgLayout.x - cg[0], sp.eng[i].y + sp.cgLayout.y - cg[1], sp.eng[i].z + sp.cgLayout.z - cg[2]).cross(_tmp))
   }
-  // uneven wing tanks move the centre of gravity sideways: the heavy wing wants to go down
-  const tk = y.tank, zc = (sp.fuelArm * (tk.R - tk.L)) / mass
-  _tmp.set(0, -W, 0).applyQuaternion(_qi)
-  _m.add(_tmp2.set(0, 0, zc).cross(_tmp))
+  // (uneven tanks: the CG moves sideways in the mass model, so lift — acting at the wing — rolls the aircraft by itself)
   if (c.rev > 0 && !s.flags.rev) event(s, 'reverse')
   s.flags.rev = c.rev > 0
 
@@ -798,7 +843,7 @@ export function step(s: Sim, dt = H) {
   _f.add(_tmp)
 
   /* ---------- landing gear & hard points */
-  const C = contacts(sp)
+  const C = ph.contacts
   let mainsOn = 0, noseOn = false, wowAny = false
   // brakes: normal (green, with anti-skid) → alternate (yellow) → accumulator (a few full applications)
   const pGb = power(s, 'G'), pYb = power(s, 'Y')
@@ -812,11 +857,12 @@ export function step(s: Sim, dt = H) {
   d.struts = [0, 0, 0]
   const list = r.gear > 0.99 ? [...C.gear.filter((g) => !dm.legs[g.leg]), ...C.hard] : C.hard
   for (const ct of list) {
-    _pw.copy(ct.r).applyQuaternion(s.quat).add(s.pos)
+    _rc.set(ct.p.x - cg[0], ct.p.y - cg[1], ct.p.z - cg[2])
+    _pw.copy(_rc).applyQuaternion(s.quat).add(s.pos)
     const pen = -_pw.y
     if (ct.leg >= 0) d.struts[ct.leg] = clamp(STATIC_STROKE * 1.6 - Math.max(0, pen), 0, STATIC_STROKE * 1.6)
     if (pen <= 0) continue
-    _vp.copy(s.w).cross(ct.r).applyQuaternion(s.quat).add(s.vel)
+    _vp.copy(s.w).cross(_rc).applyQuaternion(s.quat).add(s.vel)
     let N = ct.k * ms * pen - ct.c * ms * _vp.y
     if (N < 0) N = 0
     const isWheel = ct.kind === 'nose' || ct.kind === 'main'
@@ -846,7 +892,7 @@ export function step(s: Sim, dt = H) {
     _fw.set(0, N, 0).addScaledVector(_tmp, Fr).addScaledVector(_lat, Fl)
     _tmp.copy(_fw).applyQuaternion(_qi)
     _f.add(_tmp)
-    _m.add(_tmp2.copy(ct.r).cross(_tmp))
+    _m.add(_tmp2.copy(_rc).cross(_tmp))
     if (isWheel) { wowAny = true; if (ct.kind === 'main') mainsOn++; else noseOn = true }
     else {
       const vy = Math.abs(_vp.y), fast = d.gs > 60
@@ -864,7 +910,7 @@ export function step(s: Sim, dt = H) {
   const fWorld = _tmp.copy(_f).applyQuaternion(s.quat)
   s.vel.addScaledVector(fWorld, dt / mass)
   s.pos.addScaledVector(s.vel, dt)
-  const Ix = sp.I.x * ms, Iy = sp.I.y * ms, Iz = sp.I.z * ms
+  const Ix = ph.ms.I[0], Iy = ph.ms.I[1], Iz = ph.ms.I[2]
   _iw.set(Ix * s.w.x, Iy * s.w.y, Iz * s.w.z)
   _tmp2.copy(s.w).cross(_iw)
   _m.sub(_tmp2)
@@ -882,7 +928,7 @@ export function step(s: Sim, dt = H) {
   d.mainsOn = mainsOn >= 1; d.noseOn = noseOn; d.wow = wowAny || dm.belly
   d.decel = s.vel.length() > 1 ? -fWorld.dot(s.vel) / (s.vel.length() * mass) : 0
   const wasAir = s.airborne
-  const touching = wowAny || (dm.belly && s.pos.y < sp.cgLayout.y)
+  const touching = wowAny || (dm.belly && s.pos.y < ph.cgH)
   if (s.airborne && touching) {
     s.airborne = false
     s.touchdownVs = d.vs
@@ -891,7 +937,7 @@ export function step(s: Sim, dt = H) {
     if (fps > 22) crash(s, 'hard')
     else if (fps > 10) event(s, 'hardLanding', d.vs)
     if (!d.onRunway && d.gs > 40) event(s, 'offRunway')
-  } else if (!s.airborne && !wowAny && s.pos.y > sp.cgLayout.y + 0.5 && !dm.belly) {
+  } else if (!s.airborne && !wowAny && s.pos.y > ph.cgH + 0.5 && !dm.belly) {
     s.airborne = true
     s.everAirborne = true
     event(s, 'liftoff', d.ias)

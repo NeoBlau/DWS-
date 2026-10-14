@@ -6,6 +6,7 @@ import { cyl, glowSprite, loft, tyre, type Section } from '../../utils/geom'
 import { revolve } from '../diesel/geometry'
 import { fanBlades, vaneRing } from '../jet/geometry'
 import { DEG, STRIZH } from './fdm'
+import { STRIZH_WING, STRIZH_ENG, STRIZH_STRUT, STRIZH_GEAR, STRIZH_FIN, STRIZH_HS, STRIZH_DX } from './geometry'
 import { FS } from './state'
 import { useMats, Fuselage, Hinged, NoseGear, Glow, strobe, beacon, Forces, CockpitIfInside, flapDeg, slatDeg, strutExt, Wheel, type Mats } from './Aircraft'
 import type { Vec3 } from '../../data/types'
@@ -17,12 +18,7 @@ import type { Vec3 } from '../../data/types'
  */
 
 /* ------------------------------------------------------------------ wing planform (right side, +z) */
-const WING: Section[] = [
-  { le: 0.4, y: 5.15, z: 1.9, chord: 3.4, t: 0.125 },
-  { le: -1.15, y: 5.0, z: 8, chord: 2.7, t: 0.115 },
-  { le: -3.6, y: 4.75, z: 18, chord: 1.75, t: 0.1 },
-  { le: -5.0, y: 4.6, z: 23.65, chord: 1.2, t: 0.09 },
-]
+const WING: Section[] = STRIZH_WING
 function wingAt(z: number): Section {
   let i = 0
   while (i < WING.length - 2 && z > WING[i + 1].z) i++
@@ -30,8 +26,8 @@ function wingAt(z: number): Section {
   return { le: a.le + (b.le - a.le) * k, y: a.y + (b.y - a.y) * k, z, chord: a.chord + (b.chord - a.chord) * k, t: a.t + (b.t - a.t) * k }
 }
 const span = (z0: number, z1: number, n = 3) => Array.from({ length: n }, (_, i) => wingAt(z0 + ((z1 - z0) * i) / (n - 1)))
-const ENG: Vec3 = [2.4, 4.85, 6.8]
-const STRUT_LOW: Vec3 = [-1.0, 1.75, 2.25], STRUT_HIGH: Vec3 = [-2.6, 4.92, 13]
+const ENG: Vec3 = STRIZH_ENG
+const [STRUT_LOW, STRUT_HIGH] = STRIZH_STRUT as [Vec3, Vec3]
 
 function Bar({ a, b, w, t, material }: { a: Vec3; b: Vec3; w: number; t: number; material: THREE.Material }) {
   // a streamlined strut: flat box with its chord along the flight direction
@@ -76,7 +72,7 @@ function MainGear({ m, side }: { m: Mats; side: 1 | -1 }) {
     pivot.current.visible = g > 0.01
   })
   return (
-    <group ref={pivot} position={[-1.45, 1.42, 2.3]}>
+    <group ref={pivot} position={STRIZH_GEAR}>
       <mesh geometry={cyl(0.12, 0.11, 0.6, 18)} position={[0, -0.3, 0]} material={m.gearPaint} castShadow />
       <group ref={lower}>
         <mesh geometry={cyl(0.085, 0.085, 0.5, 18)} position={[0, 0.3, 0]} material={m.chrome} />
@@ -115,15 +111,15 @@ function Side({ side, m }: { side: 1 | -1; m: Mats }) {
       ))}
       {/* truss: main strut from the sponson, jury strut to the wing */}
       <Bar a={STRUT_LOW} b={STRUT_HIGH} w={0.62} t={0.12} material={m.wing} />
-      <Bar a={[(STRUT_LOW[0] + STRUT_HIGH[0]) / 2, (STRUT_LOW[1] + STRUT_HIGH[1]) / 2, (STRUT_LOW[2] + STRUT_HIGH[2]) / 2]} b={[-1.6, 5.05, 7.6]} w={0.35} t={0.08} material={m.wing} />
+      <Bar a={[(STRUT_LOW[0] + STRUT_HIGH[0]) / 2, (STRUT_LOW[1] + STRUT_HIGH[1]) / 2, (STRUT_LOW[2] + STRUT_HIGH[2]) / 2]} b={[-1.6 + STRIZH_DX, 5.05, 7.6]} w={0.35} t={0.08} material={m.wing} />
       {/* sponson: houses the main gear and anchors the strut */}
-      <mesh position={[-1.4, 1.45, 2.05]} scale={[4.2, 0.95, 0.85]} material={m.white} castShadow><sphereGeometry args={[1, 32, 16]} /></mesh>
+      <mesh position={[STRIZH_GEAR[0] + 0.05, 1.45, 2.05]} scale={[4.2, 0.95, 0.85]} material={m.white} castShadow><sphereGeometry args={[1, 32, 16]} /></mesh>
       <OpenFan m={m} />
       <MainGear m={m} side={side} />
-      <Glow color={side === 1 ? '#2cff6a' : '#ff2a2a'} size={0.9} position={[-5.05, 4.62, 23.75]} />
-      <Glow color="#ffffff" size={2.2} position={[-5.2, 4.62, 23.8]} blink={strobe} />
+      <Glow color={side === 1 ? '#2cff6a' : '#ff2a2a'} size={0.9} position={[-5.05 + STRIZH_DX, 4.62, 23.75]} />
+      <Glow color="#ffffff" size={2.2} position={[-5.2 + STRIZH_DX, 4.62, 23.8]} blink={strobe} />
       {/* winglet-free tip: a small raked fairing */}
-      <mesh geometry={loft('strTip', [{ le: -5.0, y: 4.6, z: 23.65, chord: 1.2, t: 0.09 }, { le: -5.5, y: 4.62, z: 24.0, chord: 0.6, t: 0.06 }])} material={accent} />
+      <mesh geometry={loft('strTip', [{ le: -5.0 + STRIZH_DX, y: 4.6, z: 23.65, chord: 1.2, t: 0.09 }, { le: -5.5 + STRIZH_DX, y: 4.62, z: 24.0, chord: 0.6, t: 0.06 }])} material={accent} />
     </group>
   )
 }
@@ -133,9 +129,9 @@ export function StrizhModel() {
   const m = useMemo(() => { const tail = base.tail.clone(); tail.color.set('#0b6e62'); return { ...base, tail } }, [base])
   const ths = useRef<THREE.Group>(null!)
   useFrame(() => { ths.current.rotation.z = -FS.sim.srf.ths })
-  const FIN: Section[] = [{ le: -11.6, y: 5.05, z: 0, chord: 6.2, t: 0.12 }, { le: -15.4, y: 10.9, z: 0, chord: 3.1, t: 0.11 }]
-  const HS: Section[] = [{ le: -14.9, y: 11.0, z: 0.2, chord: 3.0, t: 0.1 }, { le: -16.6, y: 11.1, z: 6.6, chord: 1.4, t: 0.09 }]
-  const pivot: Vec3 = [-16.2, 11.0, 0]
+  const FIN: Section[] = STRIZH_FIN
+  const HS: Section[] = STRIZH_HS
+  const pivot: Vec3 = [-15.9, 11.0, 0]
   const sprite = useMemo(() => glowSprite(), [])
   void sprite; void tyre; void fusY
   return (
@@ -143,7 +139,7 @@ export function StrizhModel() {
       <Fuselage m={m} stripe="#0b7a6c" stripe2Hex="#4fd1b8" />
       <CockpitIfInside />
       {/* wing-to-fuselage fairing on the crown */}
-      <mesh position={[-1.0, 5.0, 0]} scale={[5.2, 0.55, 2.0]} material={m.white} castShadow><sphereGeometry args={[1, 40, 16]} /></mesh>
+      <mesh position={[-1.0 + STRIZH_DX, 5.0, 0]} scale={[5.2, 0.55, 2.0]} material={m.white} castShadow><sphereGeometry args={[1, 40, 16]} /></mesh>
       <Side side={1} m={m} />
       <Side side={-1} m={m} />
       <NoseGear m={m} />
