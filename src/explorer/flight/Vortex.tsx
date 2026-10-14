@@ -104,19 +104,21 @@ function Side({ side, m }: { side: 1 | -1; m: Mats }) {
         <Hinged key={`be${i}`} id={`vxBE${i}`} sections={span(a, b, 4)} c0={0.92} c1={1} hingeC={0.92} material={m.wingDark} drive={() => [pitch(), 0, 0]} />
       ))}
       {/* inner outer-wing */}
-      <mesh geometry={loft('vxWin', span(VX.w, 18, 12), { c0: 0.12, c1: 0.76 })} material={m.wing} castShadow receiveShadow />
+      <mesh geometry={loft('vxWin', span(VX.w, 18, 12), { c0: 0.12, c1: 0.7 })} material={m.wing} castShadow receiveShadow />
       <mesh geometry={loft('vxWinLE', span(VX.w, 9.5, 6), { c0: 0, c1: 0.12 })} material={m.wing} castShadow />
       <Hinged id="vxK1" sections={span(9.5, 18, 2)} c0={0} c1={0.12} hingeC={0.12} material={m.leMetal} drive={() => { const s = slatDeg() / 20; return [-s * 35 * DEG, s * 0.2, -s * 0.15] }} />
-      <Hinged id="vxFlap" sections={span(VX.w + VX.blend, 14, 2)} c0={0.76} c1={1} hingeC={0.76} material={m.wingDark} drive={() => [flapDeg() * DEG * 1.2 + pitch() * 0.5, 0, 0]} />
-      <Hinged id="vxElv" sections={span(14, 18, 2)} c0={0.76} c1={1} hingeC={0.76} material={m.wingDark} drive={() => [ailSign * FS.sim.srf.ail + pitch() * 0.4, 0, 0]} />
+      {/* elevons on the swept panels: pitch (both together) and roll (outboard of 14 m, opposite) — no flaps on a tailless wing */}
+      <Hinged id="vxElv" sections={span(VX.w + VX.blend + 1, 14, 2)} c0={0.7} c1={1} hingeC={0.7} material={m.wingDark} drive={() => [pitch(), 0, 0]} />
+      <Hinged id="vxElv2" sections={span(14, 18, 2)} c0={0.7} c1={1} hingeC={0.7} material={m.wingDark} drive={() => [ailSign * FS.sim.srf.ail + pitch(), 0, 0]} />
       {/* folding outer panel */}
       <group position={[0, hinge.y + 0.1, 18]}>
         <group ref={tip}>
           <group position={[0, -hinge.y - 0.1, -18]}>
-            <mesh geometry={loft('vxTip', span(18, VX.span / 2, 4), { c0: 0.12, c1: 0.76 })} material={m.wing} castShadow />
+            <mesh geometry={loft('vxTip', span(18, VX.span / 2, 4), { c0: 0.12, c1: 0.7 })} material={m.wing} castShadow />
             <mesh geometry={loft('vxTipLE', span(VX.span / 2 - 1, VX.span / 2, 2), { c0: 0, c1: 0.12 })} material={m.wing} />
             <Hinged id="vxK2" sections={span(18, VX.span / 2 - 1, 2)} c0={0} c1={0.12} hingeC={0.12} material={m.leMetal} drive={() => { const s = slatDeg() / 20; return [-s * 35 * DEG, s * 0.15, -s * 0.1] }} />
-            <Hinged id="vxAil" sections={span(18, VX.span / 2, 2)} c0={0.76} c1={1} hingeC={0.76} material={m.wingDark} drive={() => [ailSign * FS.sim.srf.ail, 0, 0]} />
+            <Hinged id="vxElv3" sections={span(18, 23, 2)} c0={0.7} c1={1} hingeC={0.7} material={m.wingDark} drive={() => [ailSign * FS.sim.srf.ail + pitch(), 0, 0]} />
+            <Hinged id="vxAil" sections={span(23, VX.span / 2, 2)} c0={0.72} c1={1} hingeC={0.72} material={m.wingDark} drive={() => [ailSign * FS.sim.srf.ail, 0, 0]} />
             <Glow color={side === 1 ? '#2cff6a' : '#ff2a2a'} size={0.9} position={[at(VX.span / 2).le - 0.2, 4.4, VX.span / 2 + 0.05]} />
             <Glow color="#ffffff" size={2.2} position={[at(VX.span / 2).le - 0.9, 4.4, VX.span / 2 + 0.05]} blink={strobe} />
           </group>

@@ -103,6 +103,7 @@ export interface Cmd {
   leverStart: number // thrust-lever position during a start (over-fuelling)
   n2min?: number // idle core speed
   starting?: boolean // start sequence in progress (start fuel schedule and EGT limiter)
+  beta?: number // open fan on the ground: blade pitch in the beta range, fraction of the shaft power turned into thrust (1 = governing)
   fanPower?: number // turbo-electric: electrical power drawn by the fans, W (from the shared bus)
 }
 
@@ -169,7 +170,7 @@ export function engineStep(e: EngState, g: EngineGeo, d: Design, a: Amb, cmd: Cm
     e.N1 += ((e.N2 > 0.5 ? 0.6 + 0.4 * Math.min(1, Pshaft / (d.rotor!.P * 0.9)) : e.N2) - e.N1) * Math.min(1, dt / 1.5)
     const tipM = Math.hypot((Math.PI * g.fanD * e.N1 * g.n1) / 60, a.V) / Math.sqrt(1.4 * R * a.T0)
     const etaP = 0.88 * (tipM > 1.0 ? Math.max(0.5, 1 - 2.2 * (tipM - 1.0)) : 1)
-    thrust = actuatorDisc(Pshaft * etaP, a.V, a.rho, d.rotor!.A)
+    thrust = actuatorDisc(Pshaft * etaP * (cmd.beta ?? 1), a.V, a.rho, d.rotor!.A) // the rest goes into blade profile drag and swirl
     if (cmd.rev > 0) thrust = -0.45 * actuatorDisc(Pshaft * etaP, 0, a.rho, d.rotor!.A) * Math.min(1, cmd.rev === 2 ? 1 : 0.4)
     const nc = nozzle(pt5 * 0.98, T5, a.p0, GG, CPG)
     thrust += (Wc + e.Wf) * nc.V - Wc * a.V

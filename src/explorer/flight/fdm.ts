@@ -136,24 +136,24 @@ export const STRIZH: Spec = {
 export const VORTEX: Spec = {
   id: 'vortex', arch: 'electric', v1: 110, vr: 115, fuelKind: 'lh2', lhv: 120, fuelLow: 400, crossTie: true, mdd: 0.8, cruiseAt: { mach: 0.84, alt: 13100 },
   wingCap: 0, fuelArm: 0, oew: 64000, payload: 22800, fuelMax: 4000, fuelStart: 2600, refMass: 92000,
-  S: 553, b: 56, c: 11.9, iw: 1.5 * DEG, CLA: 4.6, CD0: 0.0086, CDgear: 0.0045, e: 0.92,
+  S: 406, b: 56, c: 12.7, iw: 1.5 * DEG, CLA: 4.6, CD0: 0.0086, CDgear: 0.0045, e: 0.92,
   I: V3(4.6e6, 9.4e6, 6.2e6),
   tMax: 140000, eng: [V3(-0.37, 1.5, -3.6), V3(-0.37, 1.5, 3.6)], ffScale: 1, revFrac: 0.38, tsfc0: 0.0071, idleFF: 60, seats: 240,
   cgLayout: V3(-0.63, 3.0, 0),
   confs: [
     { id: '0', slat: 0, flap: 0, cl0: 0.08, as: 15, cd: 0, cm: 0, vfe: 340 },
     { id: '1', slat: 20, flap: 0, cl0: 0.16, as: 17.5, cd: 0.003, cm: 0, vfe: 230 },
-    { id: '1+F', slat: 20, flap: 5, cl0: 0.26, as: 17, cd: 0.006, cm: -0.008, vfe: 215 },
-    { id: '2', slat: 20, flap: 8, cl0: 0.32, as: 17, cd: 0.009, cm: -0.012, vfe: 200 },
-    { id: '3', slat: 20, flap: 12, cl0: 0.38, as: 16.5, cd: 0.013, cm: -0.016, vfe: 190 },
-    { id: 'FULL', slat: 20, flap: 16, cl0: 0.44, as: 16.5, cd: 0.02, cm: -0.022, vfe: 180 },
+    { id: '1+F', slat: 20, flap: 0, cl0: 0.26, as: 17, cd: 0.006, cm: -0.008, vfe: 215 },
+    { id: '2', slat: 20, flap: 0, cl0: 0.32, as: 17, cd: 0.009, cm: -0.012, vfe: 200 },
+    { id: '3', slat: 20, flap: 0, cl0: 0.38, as: 16.5, cd: 0.013, cm: -0.016, vfe: 190 },
+    { id: 'FULL', slat: 20, flap: 0, cl0: 0.44, as: 16.5, cd: 0.02, cm: -0.022, vfe: 180 },
   ],
   vmo: 340, mmo: 0.86, vle: 270, vlo: 250, nzMax: 2.5, nzMaxFlaps: 2.0,
-  noseGear: V3(11.0, 0, 0), mainGear: V3(2.7, 0, 4.0),
+  noseGear: V3(11.0, 0, 0), mainGear: V3(3.6, 0, 4.0),
   hard: [
     { id: 'tail', kind: 'tail', p: V3(-2.9, 3.35, 0) },
     { id: 'engL', kind: 'engine', p: V3(-1.0, 3.9, -6.4) }, { id: 'engR', kind: 'engine', p: V3(-1.0, 3.9, 6.4) },
-    { id: 'tipL', kind: 'wingtip', p: V3(-13.8, 4.35, -28) }, { id: 'tipR', kind: 'wingtip', p: V3(-13.8, 4.35, 28) },
+    { id: 'tipL', kind: 'wingtip', p: V3(-10.8, 4.35, -28) }, { id: 'tipR', kind: 'wingtip', p: V3(-10.8, 4.35, 28) },
     { id: 'bellyF', kind: 'belly', p: V3(12.0, 1.4, 0) }, { id: 'bellyA', kind: 'belly', p: V3(0, 1.9, 0) },
   ],
   wingY: 0.4,
@@ -199,7 +199,7 @@ function contactsOf(sp: Spec, cg: number[], mass: number) {
 }
 export type Contacts = ReturnType<typeof contactsOf>
 /** the physical state the model carries along: engines (gas-path state), mass properties, contacts */
-export interface Phys { m: Model; eng: [GasState, GasState]; ms: MassState; msT: number; contacts: Contacts; cgH: number; aeroTick?: boolean; aeroLast?: ReturnType<typeof aeroForces> }
+export interface Phys { m: Model; eng: [GasState, GasState]; ms: MassState; msT: number; contacts: Contacts; cgH: number; elevK: number; aeroTick?: boolean; aeroLast?: ReturnType<typeof aeroForces> }
 
 /* ------------------------------------------------------------------ state */
 export type Law = 'normal' | 'direct'
@@ -336,11 +336,23 @@ export function createSim(start: Start = 'runway', spec: Spec = A320): Sim {
   if (start === 'approach' || start === 'cruise') trimSim(s)
   return s
 }
+/**
+ * pitch control power: angular acceleration per radian of elevator per pascal of dynamic pressure, from the same
+ * aerodynamic model and the actual pitch inertia. The flight-control laws are tuned on the F320; for another
+ * airframe their gains are divided by its control power relative to that (what an FCS designer does per type).
+ */
+const PITCH_POWER_REF = 2.93e-4
+function pitchPower(mdl: Model, ms: MassState) {
+  const run = (el: number) => aeroForces(mdl.aero, { rho: 1.225, a: 340, mu: 1.8e-5, v: [70 * Math.cos(0.07), -70 * Math.sin(0.07), 0], w: [0, 0, 0], cg: ms.cg,
+    ctl: { elev: el, ths: 0, ail: 0, rud: 0, splL: 0, splR: 0, gnd: 0, flap: 0, slat: 0, gear: 0, flapL: 1, flapR: 1 }, ground: { on: false, n: [0, 1, 0], d: 0 }, t: 0, fixWake: 0.07 }).M[2]
+  return Math.abs(run(10 * DEG) - run(-10 * DEG)) / (20 * DEG) / (0.5 * 1.225 * 70 * 70) / ms.I[2]
+}
 function initPhys(s: Sim, start: Start) {
   const mdl = model(s.spec.id, s.spec.confs)
   const ms = massNow(mdl, s.spec.payload, s.sys.tank)
   const running = start !== 'gate'
-  s.phys = { m: mdl, eng: [newEngine(running, mdl.geo.engine), newEngine(running, mdl.geo.engine)], ms, msT: 0, contacts: contactsOf(s.spec, ms.cg, ms.m), cgH: ms.cg[1] }
+  const pp = pitchPower(mdl, ms), elevK = clamp(PITCH_POWER_REF / pp, 0.25, 1.5)
+  s.phys = { m: mdl, eng: [newEngine(running, mdl.geo.engine), newEngine(running, mdl.geo.engine)], ms, msT: 0, contacts: contactsOf(s.spec, ms.cg, ms.m), cgH: ms.cg[1], elevK }
   if (!s.airborne) s.pos.y = ms.cg[1]
   if (start === 'approach' || start === 'cruise') s.phys.eng.forEach((e) => { e.N1 = 0.6; e.N2 = 0.8; e.T4 = 1200; e.Wf = 0.3 })
 }
@@ -383,12 +395,15 @@ function trimSim(s: Sim) {
   s.ctl.lever = leverFor(s.spec, tgt)
   s.n1 = [ph.eng[0].N1 * 100, ph.eng[1].N1 * 100]; s.eng.forEach((e, i) => { e.n1 = s.n1[i]; e.n2 = ph.eng[i].N2 * 100 })
 }
+/** fraction of the shaft power the rotor / fans turn into thrust at the low end of the lever range */
+const lowPitch = (lever: number, airborne: boolean) => (airborne ? 0.04 : 0.08) + (airborne ? 0.96 : 0.92) * clamp(lever / 0.3, 0, 1) ** 2
 /** thrust of one engine (with its share of the electric fans) at a FADEC target, for trimming */
 function engineThrust(s: Sim, e: GasState, target: number, amb: { T0: number; p0: number; M: number; V: number; rho: number }, dt: number) {
   const g = s.phys.m.geo.engine, des = s.phys.m.des
-  const o = engineStep(e, g, des, amb, { target, fuel: true, ignite: true, starter: 0, rev: 0, bleed: 0, leverStart: 0, n2min: 0.66 }, dt)
+  const pitch = g.kind === 'turbofan' ? 1 : lowPitch(leverFor(s.spec, target), true)
+  const o = engineStep(e, g, des, amb, { target, fuel: true, ignite: true, starter: 0, rev: 0, bleed: 0, leverStart: 0, n2min: 0.66, beta: pitch }, dt)
   let T = o.thrust
-  if (g.kind === 'turboelectric') T += ((g.fans ?? 8) / 2) * bliFan((o.Pshaft * 0.975) / (g.fans ?? 8), amb.V, amb.rho, des.fan!.Ae, g.bli ?? 0)
+  if (g.kind === 'turboelectric') T += ((g.fans ?? 8) / 2) * bliFan((o.Pshaft * 0.975 * pitch) / (g.fans ?? 8), amb.V, amb.rho, des.fan!.Ae, g.bli ?? 0)
   return T
 }
 /** FADEC target from the thrust lever: fan speed N1 (turbofan) or core speed N2 (open fan, turbo-electric) */
@@ -397,7 +412,8 @@ export function fadecTarget(sp: Spec, lever: number, rev: number, airborne: bool
   const n1 = rev === 2 ? N1_MAXREV : rev === 1 ? N1_IDLE_GND + 6 : leverN1(lever, airborne ? N1_IDLE_FLT : N1_IDLE_GND)
   if (kind === 'turbofan') return n1 / 100
   const f = clamp((n1 - N1_IDLE_GND) / (96 - N1_IDLE_GND), 0, 1)
-  return 0.6 + (kind === 'turboelectric' ? 0.32 : 0.34) * f
+  // core power rises steeply with N2, so the schedule is flat near idle and the lever gives the same thrust fraction as on the turbofan
+  return 0.6 + (kind === 'turboelectric' ? 0.32 : 0.34) * Math.pow(f, kind === 'turboelectric' ? 2.4 : 2)
 }
 function leverFor(sp: Spec, target: number) {
   let lo = 0, hi = 1
@@ -527,7 +543,8 @@ function flyByWire(s: Sim, dt: number) {
   const law = s.sys.law, isNormal = law === 'normal'
   const pE = power(s, ACT.elev), pA = power(s, ACT.ail), pR = power(s, ACT.rud), pT = power(s, ACT.ths)
   let elevCmd: number
-  const direct = c.stickY * 30 * DEG * clamp(sched, 0.35, 1)
+  const ek = s.phys?.elevK ?? 1
+  const direct = c.stickY * 30 * DEG * clamp(sched, 0.35, 1) * ek
   if (law === 'direct' || law === 'mech') {
     // direct law: stick → elevator. Mechanical back-up: no computers at all — only the trim wheel and the rudder pedals
     elevCmd = law === 'mech' ? 0 : direct
@@ -582,7 +599,7 @@ function flyByWire(s: Sim, dt: number) {
     const qe = qCmd - d.q
     f.qInt = clamp(f.qInt + qe * dt, -0.6, 0.6)
     if (!s.airborne) f.qInt *= 1 - Math.min(1, dt * 2)
-    const normal = (2.6 * qe + 1.5 * f.qInt) * sched
+    const normal = (2.6 * qe + 1.5 * f.qInt) * sched * ek
     const b = prot ? 1 : f.blend
     elevCmd = direct * (1 - b) + normal * b
     // auto-trim: the stabiliser slowly takes over the elevator's load so stick-free flight is trimmed
@@ -781,6 +798,9 @@ export function step(s: Sim, dt = H) {
   const bleedEach = !elecArch && (y.sw.packs[0] || y.sw.packs[1]) && y.bleedSrc.startsWith('ENG') ? 0.5 : 0
   let fanPowerTotal = 0
   const coreThrust = [0, 0]
+  // low in the lever range the rotor blades go to fine pitch (beta range on the ground, flight idle in the air) and the
+  // fan controllers hold the motors back: a big disc would otherwise push hard on idle power (static thrust ∝ P^⅔·A^⅓)
+  const groundPitch = c.rev > 0 ? 1 : lowPitch(lever, s.airborne)
   for (let i = 0; i < 2; i++) {
     const e = s.eng[i], ge = ph.eng[i]
     const master = c.master[i]
@@ -802,7 +822,7 @@ export function step(s: Sim, dt = H) {
     const out = engineStep(ge, g, des, amb, {
       target: fadecTarget(sp, lever, running ? c.rev : 0, s.airborne), fuel: (starting || running) && fed, ignite: starting && ign,
       starter: starting && ge.N2 < 0.5 ? 150e3 * starter * (1 - ge.N2 / 0.55) : 0, rev: running ? c.rev : 0, bleed: bleedEach,
-      leverStart: starting ? c.lever : 0, n2min: s.airborne ? 0.66 : 0.58, starting,
+      leverStart: starting ? c.lever : 0, n2min: s.airborne ? 0.66 : 0.58, starting, beta: groundPitch,
     }, dt)
     if (starting) {
       const ts = s.t - e.tStart
@@ -824,7 +844,7 @@ export function step(s: Sim, dt = H) {
   }
   if (g.kind === 'turboelectric') {
     // generators → common bus → 8 electric fans that swallow the body's boundary layer
-    const per = (fanPowerTotal * 0.975) / (g.fans ?? 8), half = (g.fans ?? 8) / 2
+    const per = (fanPowerTotal * 0.975 * groundPitch) / (g.fans ?? 8), half = (g.fans ?? 8) / 2
     let side = half * bliFan(per, d.V, atm.rho, des.fan!.Ae, g.bli ?? 0)
     if (c.rev > 0 && !s.airborne) side = -0.4 * half * bliFan(per, 0, atm.rho, des.fan!.Ae, 0)
     d.thrust[0] = coreThrust[0] + side; d.thrust[1] = coreThrust[1] + side

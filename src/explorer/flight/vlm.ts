@@ -23,6 +23,7 @@ export interface Panel {
   inc: number; camber: number; clmax: number; cm0: number; laminar: number
   ctrl: Partial<Record<CtrlKind, number>> // chord fraction of the device over this strip
   tank: boolean
+  inBody: boolean // wing carry-through inside the fuselage: the body sets the flow there, it has no section stall of its own
 }
 export interface Ctl { elev: number; ths: number; ail: number; rud: number; splL: number; splR: number; gnd: number; flap: number; slat: number; gear: number; flapL: number; flapR: number } // flapL/R: 1 = flap there, 0 = torn off
 interface Sys { mach: number; alpha: number; lu: Float64Array; piv: Int32Array; B: Float64Array[] }
@@ -65,6 +66,7 @@ function stationAt(sections: Section[], u: number, vertical: boolean) {
 const CHORDWISE: Record<Surface['id'], number> = { wing: 2, htail: 2, fin: 2, winglet: 1 }
 function buildPanels(geo: Geo) {
   const out: Panel[] = []
+  const fus = geo.bodies.find((b) => b.kind === 'fuselage')
   for (const sf of geo.surfaces) {
     const N = sf.panels, NC = sf.chordwise ?? CHORDWISE[sf.id]
     const halves: (1 | -1)[] = sf.vertical && !sf.pair ? [1] : [1, -1]
@@ -92,7 +94,8 @@ function buildPanels(geo: Geo) {
           if (!sf.vertical && A[2] > B[2]) { A = P1; B = P0 }
           const sv = unit(sub(B, A))
           const n = unit(cross([-1, 0, 0], sv))
-          const span = len(sub(B, A))
+          // planform area: chord (along the flow) × width across the flow — not the swept length of the bound vortex
+          const span = Math.hypot(B[1] - A[1], B[2] - A[2])
           const ctrl: Panel['ctrl'] = {}
           // a device covers this chordwise panel by the overlap of [1 − cf, 1] (trailing edge) or [0, cf] (leading edge)
           for (const c of sf.ctrls) if (station >= c.z0 && station <= c.z1) {
@@ -105,6 +108,7 @@ function buildPanels(geo: Geo) {
             strip, f0, f1, surf: sf.id, side, A, B, cp, mid: mul(add(A, B), 0.5), n, s: sv, chord: Sm.chord, area: span * Sm.chord * (f1 - f0), tc: Sm.t, cosL: Math.max(0.5, cosL), station,
             inc: sf.inc[0] + (sf.inc[1] - sf.inc[0]) * um, camber: sf.camber, clmax: sf.clmax, cm0: sf.cm0, laminar: sf.id === 'wing' && geo.engine.kind === 'openfan' ? 0.35 : 0.05,
             ctrl, tank: !!sf.tank && station >= sf.tank[0] && station <= sf.tank[1],
+            inBody: sf.id === 'wing' && !!fus && station < 0.9 * fus.r(Sm.le - 0.4 * Sm.chord),
           })
         }
       }
@@ -350,7 +354,7 @@ export function aeroForces(ae: Aero, inp: AeroIn): AeroOut {
     ae.gPrev[k] = g
     const U = Umid[st.panels[0]], Ul = len(U) || 1e-6
     const clLin = (2 * g) / (Ul * p.chord)
-    const clmax = (p.clmax + dClmax[k]) * Math.sqrt(p.cosL) * machF
+    const clmax = (p.inBody ? 9 : p.clmax + dClmax[k]) * Math.sqrt(p.cosL) * machF
     const x = clLin >= 0 ? clLin / Math.max(0.2, clmax) : -clLin / Math.max(0.2, 0.75 * p.clmax)
     let f = 1, sep = 0
     if (x > 0.9) {
@@ -358,7 +362,7 @@ export function aeroForces(ae: Aero, inp: AeroIn): AeroOut {
       else { const fall = Math.max(0.55, 1.0 - 1.1 * (x - 1.05)); f = fall / x; sep = Math.min(1, (x - 1.0) * 1.5) }
     }
     kst[k] = f; sepA[k] = sep; clS[k] = clLin * f
-    if (st.surf === 'wing') { nW++; if (x > 1.02) { if (st.side === 1) stR++; else stL++ } }
+    if (st.surf === 'wing' && !p.inBody) { nW++; if (x > 1.02) { if (st.side === 1) stR++; else stL++ } }
   }
   // forces: Kutta–Joukowski with induced velocities; profile and wave drag per strip
   const F = [0, 0, 0], Mo = [0, 0, 0]

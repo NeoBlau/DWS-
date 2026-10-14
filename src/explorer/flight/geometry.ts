@@ -149,17 +149,24 @@ export const STRIZH_GEO: Geo = {
  * Design iteration 2 (found with the physics above). The first drawing had a 982 m² centre body: far too much skin
  * for 240 seats (lift-to-drag only 11) and the centre of gravity behind the neutral point (unstable). Now: a compact
  * 22 m centre chord, 16 % thick to hold the cabin and the hydrogen tanks, 56 m span (36 m folded) with outer
- * panels swept further back to move the neutral point aft — static margin ≈ 20 % MAC, best L/D ≈ 17.
+ * panels swept further back to move the neutral point aft, best L/D ≈ 17.
  * Honest limit found on the way: only ≈ 4 t of liquid hydrogen fit in the remaining volume, so the range is medium.
+ *
+ * Iteration 3 (after the panel-area fix in vlm.ts the full simulator could not lift the nose): static margin was 31 %
+ * and the elevons on the 22 m centre chord lift close to the CG, so they hardly pitch the aircraft; the main gear
+ * stood 2.8 m behind the CG. Now the outer panels sit 3 m further forward (margin 8–10 % MAC, as on fly-by-wire
+ * blended wings), the cabin and equipment 1 m further aft, pitch and roll come from big elevons on the swept outer
+ * panels (no flaps: on a tailless aircraft their nose-down moment cannot be trimmed), the main gear 1.1 m behind
+ * the CG (≈ 17° tip-back angle).
  */
-export const VX = { c0: 22, w: 6, cw: 12, blend: 2.5, rootC: 5.5, tipC: 1.8, sweep: 17, span: 56 }
+export const VX = { c0: 22, w: 6, cw: 12, blend: 2.5, rootC: 5.5, tipC: 1.8, sweep: 17, span: 56, wx: 3 }
 /** planform: a smooth centre body blending into a swept outer wing (right half, z ≥ 0) */
 export function vortexPlanform(z: number): Section {
   const p = VX
   if (z <= p.w) { const k = z / p.w; return { le: 19 - 7 * k ** 2.2, y: 3.4 + 0.1 * k, z, chord: p.c0 - (p.c0 - p.cw) * k ** 2, t: 0.16 - 0.04 * k } }
-  if (z <= p.w + p.blend) { const k = (z - p.w) / p.blend, e = k * k * (3 - 2 * k); return { le: 12 - (12 - 3.2) * k, y: 3.5 + 0.13 * k, z, chord: p.cw - (p.cw - p.rootC) * e, t: 0.12 - 0.022 * k } }
+  if (z <= p.w + p.blend) { const k = (z - p.w) / p.blend, e = k * k * (3 - 2 * k); return { le: 12 - (12 - 3.2 - p.wx) * k, y: 3.5 + 0.13 * k, z, chord: p.cw - (p.cw - p.rootC) * e, t: 0.12 - 0.022 * k } }
   const k = (z - p.w - p.blend) / (p.span / 2 - p.w - p.blend)
-  return { le: 3.2 - p.sweep * k, y: 3.63 + 0.72 * k, z, chord: p.rootC - (p.rootC - p.tipC) * k, t: 0.098 - 0.013 * k }
+  return { le: 3.2 + p.wx - p.sweep * k, y: 3.63 + 0.72 * k, z, chord: p.rootC - (p.rootC - p.tipC) * k, t: 0.098 - 0.013 * k }
 }
 const naca = (u: number) => 5 * (0.2969 * Math.sqrt(u) - 0.126 * u - 0.3516 * u * u + 0.2843 * u ** 3 - 0.1036 * u ** 4)
 /** height of the Vortex upper surface at (x, z) */
@@ -171,12 +178,12 @@ export const VORTEX_FAN_Z = [0.95, 2.8, 4.65, 6.4]
 export const VORTEX_FAN_X = -1.0
 export const VORTEX_FIN_Z = 7.2
 export const VORTEX_FIN: Section[] = [{ le: 4.2, y: 0, z: 0, chord: 4.6, t: 0.11 }, { le: 1.2, y: 4.0, z: 0, chord: 2.4, t: 0.1 }]
-export const VORTEX_GEAR: [number, number, number] = [2.7, 1.75, 4.0]
-const vxZ = [0, 1.5, 3, 4.5, 5.5, 6, 6.8, 7.6, 8.5, 12, 15, 18, 21, 24, 28]
+export const VORTEX_GEAR: [number, number, number] = [3.6, 1.75, 4.0]
+export const vxZ = [0, 1.5, 3, 4.5, 5.5, 6, 6.8, 7.6, 8.5, 12, 15, 18, 21, 24, 28]
 export const VORTEX_GEO: Geo = {
   surfaces: [
     { id: 'wing', sections: vxZ.map(vortexPlanform), panels: 13, chordwise: 3, inc: [1.5 * D, -2.5 * D], camber: -1.2 * D, clmax: 1.45, cm0: 0.01, tank: [0, 6],
-      ctrls: [{ kind: 'elevon', z0: 0, z1: 8.5, cf: 0.1 }, { kind: 'flap', z0: 8.5, z1: 14, cf: 0.24 }, { kind: 'elevon', z0: 14, z1: 18, cf: 0.24 }, { kind: 'aileron', z0: 18, z1: 28, cf: 0.24 }, { kind: 'krueger', z0: 9.5, z1: 27, cf: 0.12 }, { kind: 'spoiler', z0: 9, z1: 17, cf: 0.15 }] },
+      ctrls: [{ kind: 'elevon', z0: 0, z1: 8.5, cf: 0.1 }, { kind: 'elevon', z0: 9.5, z1: 23, cf: 0.3 }, { kind: 'aileron', z0: 23, z1: 28, cf: 0.28 }, { kind: 'krueger', z0: 9.5, z1: 27, cf: 0.12 }, { kind: 'spoiler', z0: 10, z1: 18, cf: 0.15 }] },
     { id: 'fin', sections: VORTEX_FIN.map((s) => ({ ...s, y: s.y + vortexTop(3, VORTEX_FIN_Z) - 0.05 })), vertical: true, pair: VORTEX_FIN_Z, cant: 10 * D, panels: 5, inc: [0, 0], camber: 0, clmax: 1.2, cm0: 0, ctrls: [{ kind: 'rudder', z0: 0, z1: 99, cf: 0.3 }] },
   ],
   bodies: [
@@ -185,18 +192,18 @@ export const VORTEX_GEO: Geo = {
   masses: [
     { id: 'centrebody', m: 16500, at: 'wing' },
     { id: 'fins', m: 900, at: 'fin' },
-    { id: 'cores', m: 3200, at: [4.0, 3.3, 2.2], size: [4, 1.2, 1.2], mirror: true },
-    { id: 'generators', m: 1400, at: [1.5, 3.3, 2.2], mirror: true },
+    { id: 'cores', m: 3200, at: [3.0, 3.3, 2.2], size: [4, 1.2, 1.2], mirror: true },
+    { id: 'generators', m: 1400, at: [0.5, 3.3, 2.2], mirror: true },
     { id: 'fans', m: 4 * 820, at: [VORTEX_FAN_X, 4.4, 3.6], size: [2.4, 2, 6], mirror: true },
-    { id: 'lh2tanks', m: 2 * 2900, at: [1.0, 3.5, 3.0], size: [3, 1.8, 6], mirror: true },
+    { id: 'lh2tanks', m: 2 * 2900, at: [0.0, 3.5, 3.0], size: [3, 1.8, 6], mirror: true },
     { id: 'mainGear', m: 1500, at: [VORTEX_GEAR[0], 1.6, VORTEX_GEAR[2]], mirror: true }, { id: 'noseGear', m: 450, at: [11, 1.2, 0] },
-    { id: 'avionics', m: 1100, at: [15.5, 3.4, 0], size: [3, 1.5, 2] },
-    { id: 'furnishings', m: 7600, at: [9.5, 3.4, 0], size: [12, 2, 10] },
-    { id: 'systems', m: 5600, at: [5.0, 3.0, 0], size: [8, 1.4, 8] },
-    { id: 'misc', m: 3550, at: [6.0, 3.4, 0], size: [16, 2, 10] },
+    { id: 'avionics', m: 1100, at: [14.5, 3.4, 0], size: [3, 1.5, 2] },
+    { id: 'furnishings', m: 7600, at: [8.5, 3.4, 0], size: [12, 2, 10] },
+    { id: 'systems', m: 5600, at: [4.0, 3.0, 0], size: [8, 1.4, 8] },
+    { id: 'misc', m: 3550, at: [5.0, 3.4, 0], size: [16, 2, 10] },
   ],
   gearDrag: 2.6,
-  cabin: { x0: 4, x1: 16, y: 3.4, w: 10 }, centreTank: [1.0, 3.5, 3.0],
+  cabin: { x0: 3, x1: 15, y: 3.4, w: 10 }, centreTank: [0.0, 3.5, 3.0],
   engine: { kind: 'turboelectric', W: 60, bpr: 0, fpr: 1.0, lpc: 2.2, hpc: 13, T4: 1750, pgain: 1.12, lhv: 120e6, fanD: 1.8, n1: 6200, n2: 21000, I1: 20, I2: 7, fans: 8, bli: 0.12 },
 }
 
